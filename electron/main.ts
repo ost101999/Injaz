@@ -3,6 +3,7 @@ import path from 'path';
 import { google } from 'googleapis';
 import http from 'http';
 import url from 'url';
+import { autoUpdater } from 'electron-updater';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -275,6 +276,9 @@ if (!gotTheLock) {
         createMainWindow();
         // Quick Note window is created on demand (not at startup)
         createTray();
+
+        // Check for updates and notify user
+        autoUpdater.checkForUpdatesAndNotify();
 
         registerGlobalShortcut(currentGlobalShortcut);
         registerAppToggleShortcut(currentAppToggleShortcut);
