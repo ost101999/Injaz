@@ -11,11 +11,19 @@
     "electron": "wait-on tcp:4000 && cross-env NODE_ENV=development electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run compile:electron && npm run electron\"",
     "dist": "npm run build && npm run compile:electron && electron-builder",
+    "release": "npm run build && npm run compile:electron && electron-builder --publish always",
     "electron:build": "npm run dist",
     "electron:run": "npm run compile:electron && electron ."
   },
   "build": {
     "appId": "com.injaz.app",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ost101999",
+        "repo": "Injaz"
+      }
+    ],
     "productName": "injaz---advanced-task-manager",
     "win": {
       "target": "nsis",
@@ -35,6 +43,7 @@
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.8.3",
     "googleapis": "^171.4.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
