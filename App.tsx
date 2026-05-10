@@ -1058,6 +1058,13 @@ export default function App() {
                 const hasJustCreatedChild = (t.children || []).some(c => Date.now() - c.createdAt < 1000);
                 if (isEditingNewChild || hasJustCreatedChild) return false;
 
+                // If editing a child and it would be empty otherwise, keep it at the bottom until finished
+                const isEditingChild = (t.children || []).some(c => c.id === inlineEditingId);
+                if (isEditingChild) {
+                    const otherChildren = (t.children || []).filter(c => c.id !== inlineEditingId);
+                    if (getEffectiveTaskCount(otherChildren) === 0) return true;
+                }
+
                 return getEffectiveTaskCount([t]) === 0;
             };
             const aEmptyParent = isTaskEmptyParent(a);
