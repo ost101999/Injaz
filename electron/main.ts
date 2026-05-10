@@ -280,12 +280,24 @@ if (!gotTheLock) {
         // Check for updates and notify user
         autoUpdater.checkForUpdatesAndNotify();
 
+        autoUpdater.on('checking-for-update', () => {
+            mainWindow?.webContents.send('checking_for_update');
+        });
+
         autoUpdater.on('update-available', () => {
             mainWindow?.webContents.send('update_available');
         });
 
+        autoUpdater.on('update-not-available', () => {
+            mainWindow?.webContents.send('update_not_available');
+        });
+
         autoUpdater.on('update-downloaded', () => {
             mainWindow?.webContents.send('update_downloaded');
+        });
+
+        autoUpdater.on('error', (err) => {
+            mainWindow?.webContents.send('update_error', err.message || err);
         });
 
         registerGlobalShortcut(currentGlobalShortcut);

@@ -428,15 +428,28 @@ export default function App() {
     useEffect(() => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         if (ipc) {
+            ipc.on('checking_for_update', () => {
+                console.log('Checking for update...');
+            });
             ipc.on('update_available', () => {
                 setUpdateAvailable(true);
+            });
+            ipc.on('update_not_available', () => {
+                console.log('Update not available.');
             });
             ipc.on('update_downloaded', () => {
                 setUpdateDownloaded(true);
             });
+            ipc.on('update_error', (event: any, error: any) => {
+                console.error('Update error:', error);
+                alert('خطأ في التحديث: ' + error);
+            });
             return () => {
+                ipc.removeAllListeners('checking_for_update');
                 ipc.removeAllListeners('update_available');
+                ipc.removeAllListeners('update_not_available');
                 ipc.removeAllListeners('update_downloaded');
+                ipc.removeAllListeners('update_error');
             };
         }
     }, []);
