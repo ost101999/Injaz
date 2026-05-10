@@ -1,17 +1,19 @@
 #Requires AutoHotkey v2.0
 
-; مسار المشروع ثابت ليعمل الملف من أي مكان
+; مسار المشروع
 ProjectPath := "c:\My App\injaz v2"
 
-if MsgBox("هل تريد تحديث الإصدار ورفعه إلى GitHub تلقائياً؟", "إطلاق تحديث جديد", "YesNo") = "No"
+if MsgBox("هل تريد تحديث الإصدار وبناء التطبيق ورفعه إلى GitHub؟", "إطلاق تحديث جديد", "YesNo") = "No"
     return
+
+; التوكن الخاص بك
+GhToken := "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"
 
 ; تشغيل الأوامر في سطر الأوامر
 ; 1. الانتقال لمجلد المشروع
-; 2. رفع رقم الإصدار (Patch)
-; 3. إضافة كل التغييرات
-; 4. عمل Commit
-; 5. الرفع إلى GitHub
-RunWait("cmd.exe /c `"cd /d `"" ProjectPath "`" && npm --no-git-tag-version version patch && git add . && git commit -m `"chore: release new version`" && git push origin main & pause`"")
+; 2. رفع رقم الإصدار (Patch) تلقائياً في package.json
+; 3. إعطاء الصلاحية عن طريق ضبط المتغير البيئي GH_TOKEN
+; 4. تشغيل أمر البناء والرفع (npm run release)
+RunWait("cmd.exe /c `"cd /d `"" ProjectPath "`" && npm --no-git-tag-version version patch && set GH_TOKEN=" GhToken " && npm run release & pause`"")
 
-MsgBox("تم تحديث الإصدار ورفع الكود بنجاح! راجع صفحة Actions على GitHub لمتابعة البناء.", "تم بنجاح")
+MsgBox("تمت العملية بنجاح! تم تحديث الإصدار وبناء التطبيق ورفعه إلى GitHub.", "تم بنجاح")
