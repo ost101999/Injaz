@@ -1038,10 +1038,10 @@ export default function App() {
             const bPin = b.pinStatus === 'top' ? -1 : (b.pinStatus === 'bottom' ? 1 : 0);
             if (aPin !== bPin) return aPin - bPin;
 
-            // 2. Empty Parent Tasks at the bottom (except when editing or just created with colon)
+            // 2. Empty Parent Tasks at the bottom
             const isTaskEmptyParent = (t: Task) => {
                 if (t.isCompleted) return false;
-                if (t.title.trim().endsWith(':')) return false; // nascent parent (just typed ":")
+                
                 // No title + no children = brand new task being created, not an empty parent
                 const hasNoChildren = !t.children || t.children.length === 0;
                 if (hasNoChildren && !t.title.trim()) return false;
