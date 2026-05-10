@@ -27,6 +27,31 @@ interface AppPreferences {
 export default function App() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [updateDownloaded, setUpdateDownloaded] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'>('idle');
+    const [updateErrorMsg, setUpdateErrorMsg] = useState('');
+
+    const handleBellClick = () => {
+        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+        
+        if (updateAvailable && updateStatus !== 'downloaded' && updateStatus !== 'downloading') {
+            if (confirm('هل تود تنزيل التحديث الجديد؟')) {
+                setUpdateStatus('downloading');
+                ipc?.send('download_update');
+            }
+        } else if (updateDownloaded || updateStatus === 'downloaded') {
+            if (confirm('تم تحميل التحديث بنجاح! هل تريد إعادة التشغيل للتثبيت الآن؟')) {
+                ipc?.send('quit-and-install');
+            }
+        } else if (updateStatus === 'downloading') {
+            alert('جاري تحميل التحديث بالفعل في الخلفية...');
+        } else if (updateStatus === 'error') {
+            alert('حدث خطأ أثناء التحديث: ' + updateErrorMsg);
+        } else if (updateStatus === 'checking') {
+            alert('جاري البحث عن تحديثات...');
+        } else {
+            alert('أنت على أحدث إصدار بالفعل!');
+        }
+    };
 
     // --- PREFERENCES STATE ---
     const [preferences, setPreferences] = useState<AppPreferences>(() => {
@@ -429,20 +454,23 @@ export default function App() {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         if (ipc) {
             ipc.on('checking_for_update', () => {
-                console.log('Checking for update...');
+                setUpdateStatus('checking');
             });
             ipc.on('update_available', () => {
                 setUpdateAvailable(true);
+                setUpdateStatus('available');
             });
             ipc.on('update_not_available', () => {
-                console.log('Update not available.');
+                setUpdateStatus('idle');
             });
             ipc.on('update_downloaded', () => {
                 setUpdateDownloaded(true);
+                setUpdateStatus('downloaded');
             });
             ipc.on('update_error', (event: any, error: any) => {
+                setUpdateStatus('error');
+                setUpdateErrorMsg(error);
                 console.error('Update error:', error);
-                alert('خطأ في التحديث: ' + error);
             });
             return () => {
                 ipc.removeAllListeners('checking_for_update');
@@ -3724,6 +3752,16 @@ export default function App() {
                         <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icons.Check size={24} /></div>
                         <h1 className="text-xl font-bold text-indigo-900">إنجاز</h1>
                     </div>
+                    {/* Bell Icon */}
+                    <button 
+                        onClick={handleBellClick} 
+                        className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
+                        title="التحديثات"
+                    >
+                        <Icons.Bell size={20} className={updateAvailable ? 'animate-pulse' : ''} />
+                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>}
+                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+                    </button>
                 </div>
 
                 <div className="flex gap-2 justify-center" style={{ WebkitAppRegion: 'no-drag' } as any}>
