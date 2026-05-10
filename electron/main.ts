@@ -280,6 +280,14 @@ if (!gotTheLock) {
         // Check for updates and notify user
         autoUpdater.checkForUpdatesAndNotify();
 
+        autoUpdater.on('update-available', () => {
+            mainWindow?.webContents.send('update_available');
+        });
+
+        autoUpdater.on('update-downloaded', () => {
+            mainWindow?.webContents.send('update_downloaded');
+        });
+
         registerGlobalShortcut(currentGlobalShortcut);
         registerAppToggleShortcut(currentAppToggleShortcut);
         registerHideNotesShortcut(currentHideNotesShortcut);
@@ -340,6 +348,10 @@ if (!gotTheLock) {
     ipcMain.on('app-quit', () => {
         isQuitting = true;
         app.quit();
+    });
+
+    ipcMain.on('quit-and-install', () => {
+        autoUpdater.quitAndInstall();
     });
 
     ipcMain.on('maximize-window', () => {
