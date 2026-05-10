@@ -1,7 +1,7 @@
 {
   "name": "injaz---advanced-task-manager",
   "private": true,
-  "version": "0.0.6",
+  "version": "0.0.7",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite --port 4000",
