@@ -25,6 +25,9 @@ interface AppPreferences {
 }
 
 export default function App() {
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [updateDownloaded, setUpdateDownloaded] = useState(false);
+
     // --- PREFERENCES STATE ---
     const [preferences, setPreferences] = useState<AppPreferences>(() => {
         const saved = localStorage.getItem('injaz_preferences');
@@ -422,6 +425,22 @@ export default function App() {
     }, [activeListId, modifyTasks]);
 
     // Global undo/redo handlers - completely outside React's control
+    useEffect(() => {
+        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+        if (ipc) {
+            ipc.on('update_available', () => {
+                setUpdateAvailable(true);
+            });
+            ipc.on('update_downloaded', () => {
+                setUpdateDownloaded(true);
+            });
+            return () => {
+                ipc.removeAllListeners('update_available');
+                ipc.removeAllListeners('update_downloaded');
+            };
+        }
+    }, []);
+
     useEffect(() => {
         const handleUndoRedoGlobal = (e: KeyboardEvent) => {
             const tagName = (e.target as HTMLElement).tagName;
@@ -5729,6 +5748,47 @@ export default function App() {
                 )
             }
 
+
+            {/* Update Notification Banner */}
+            {
+                (updateAvailable || updateDownloaded) && (
+                    <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                                <span className="text-lg">📥</span>
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-sm font-bold text-gray-800">
+                                    {updateDownloaded ? 'التحديث جاهز للتثبيت!' : 'جاري تحميل تحديث جديد...'}
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {updateDownloaded ? 'تم تحميل التحديث بنجاح. أعد تشغيل التطبيق لتطبيقه.' : 'يتم تحميل التحديث في الخلفية.'}
+                                </p>
+                                <div className="mt-3 flex justify-end gap-2">
+                                    {!updateDownloaded && (
+                                        <button onClick={() => { setUpdateAvailable(false); setUpdateDownloaded(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
+                                            إغلاق
+                                        </button>
+                                    )}
+                                    {updateDownloaded && (
+                                        <>
+                                            <button onClick={() => { setUpdateAvailable(false); setUpdateDownloaded(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
+                                                لاحقاً
+                                            </button>
+                                            <button onClick={() => {
+                                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
+                                                if (ipc) ipc.send('quit-and-install');
+                                            }} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
+                                                إعادة التشغيل
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
         </div >
     );
