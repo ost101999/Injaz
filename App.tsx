@@ -3752,16 +3752,6 @@ export default function App() {
                         <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icons.Check size={24} /></div>
                         <h1 className="text-xl font-bold text-indigo-900">إنجاز</h1>
                     </div>
-                    {/* Bell Icon */}
-                    <button 
-                        onClick={handleBellClick} 
-                        className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
-                        title="التحديثات"
-                    >
-                        <Icons.Bell size={20} className={updateAvailable ? 'animate-pulse' : ''} />
-                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>}
-                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
-                    </button>
                 </div>
 
                 <div className="flex gap-2 justify-center" style={{ WebkitAppRegion: 'no-drag' } as any}>
@@ -4281,6 +4271,16 @@ export default function App() {
                     </button>
                     <button onClick={() => setActiveTab('habits')} className={`p-2 rounded-lg transition ${activeTab === 'habits' ? 'bg-orange-50 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`} title="العادات (Q)">
                         <Icons.Sparkles size={20} />
+                    </button>
+                    {/* Bell Icon */}
+                    <button 
+                        onClick={handleBellClick} 
+                        className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
+                        title="التحديثات"
+                    >
+                        <Icons.Bell size={20} className={updateAvailable ? 'animate-pulse' : ''} />
+                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>}
+                        {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
                     </button>
                 </div>
 
