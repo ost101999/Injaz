@@ -4272,6 +4272,10 @@ export default function App() {
                     <button onClick={() => setActiveTab('habits')} className={`p-2 rounded-lg transition ${activeTab === 'habits' ? 'bg-orange-50 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`} title="العادات (Q)">
                         <Icons.Sparkles size={20} />
                     </button>
+                </div>
+
+                {/* Empty third column for balance */}
+                <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex justify-end px-4">
                     {/* Bell Icon */}
                     <button 
                         onClick={handleBellClick} 
@@ -4283,9 +4287,6 @@ export default function App() {
                         {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
                     </button>
                 </div>
-
-                {/* Empty third column for balance */}
-                <div style={{ WebkitAppRegion: 'no-drag' } as any}></div>
             </nav>
 
             {/* Main Content */}
