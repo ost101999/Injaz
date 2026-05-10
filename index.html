@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="/Injaz%201.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>إنجاز - مدير المهام</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Importing Fonts: 
+         Arabic: Neirizi (CDN), Cairo, Tajawal, Amiri (Google)
+         English: Acme, Roboto, Inter (Google) 
+    -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Acme&family=Amiri:wght@400;700&display=swap"
+    rel="stylesheet" />
+  <!-- Importing Neirizi Font for Arabic from CDN -->
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/neirizi-font@master/dist/font-face.css" rel="stylesheet"
+    type="text/css" />
+
+  <!-- Importing Hacen Tunisia (Using a CDN wrapper or fallback) -->
+  <style>
+    @font-face {
+      font-family: 'Hacen Tunisia';
+      src: url('https://cdn.jsdelivr.net/gh/arbfonts/hacen-tunisia-font/HacenTunisia.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+  </style>
+
+  <!-- Placeholder for custom user font -->
+  <link id="custom-font-link" rel="stylesheet" href="" />
+
+  <style>
+    :root {
+      --font-ar: 'Amiri';
+      /* Changed default to Amiri */
+      --font-en: 'Amiri';
+      --font-nums: 'Cairo';
+      --dir-nums: ltr;
+    }
+
+    body {
+      font-family: var(--font-en), var(--font-ar), sans-serif;
+      background-color: #f8fafc;
+      transition: zoom 0.2s ease;
+    }
+
+    /* Class for numbers/dates */
+    .font-en {
+      font-family: var(--font-nums), sans-serif;
+      direction: var(--dir-nums);
+      unicode-bidi: embed;
+      display: inline-block;
+      font-weight: normal !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Pre-wrap for multiline text support */
+    .whitespace-pre-wrap {
+      white-space: pre-wrap;
+    }
+
+    /* Content Editable Placeholder mimic */
+    [contenteditable]:empty:before {
+      content: attr(placeholder);
+      color: #94a3b8;
+      opacity: 0.2;
+      display: block;
+      /* For Firefox */
+    }
+
+    /* Animation for fade in */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .animate-fadeIn {
+      animation: fadeIn 0.15s ease-out forwards;
+    }
+
+    /* Modal Entrance Animation */
+    @keyframes modalEntrance {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .animate-modal-entrance {
+      animation: modalEntrance 0.35s ease-out forwards;
+    }
+
+    /* Slide in from right (for RTL submenu) - slides from right to left */
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .animate-slideIn {
+      animation: slideIn 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+    }
+
+    /* Slide down animation */
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-slideDown {
+      animation: slideDown 0.15s ease-out forwards;
+    }
+
+    /* Confetti animation */
+    @keyframes confetti-fall {
+      0% {
+        transform: translateY(-100%) rotate(0deg);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+
+    @keyframes confetti-shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      25% {
+        transform: translateX(-10px);
+      }
+
+      75% {
+        transform: translateX(10px);
+      }
+    }
+
+    .confetti-piece {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      top: -20px;
+      animation: confetti-fall 3s ease-out forwards, confetti-shake 0.5s ease-in-out infinite;
+    }
+
+    /* Celebration bounce */
+    @keyframes celebrate-bounce {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.05);
+      }
+    }
+
+    .animate-celebrate {
+      animation: celebrate-bounce 2s ease-in-out infinite;
+    }
+
+    /* Slide Down Blur Animation (Context Menu) */
+    @keyframes slideDownBlur {
+      0% {
+        opacity: 0;
+        transform: translateY(-12px) scale(0.95);
+        filter: blur(8px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    .animate-context-menu {
+      animation: slideDownBlur 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    .animate-fade-out {
+      animation: fadeOut 0.2s ease-out forwards;
+    }
+
+    @keyframes fadeOut {
+      0% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(-20px) scale(0.95);
+      }
+    }
+
+    @keyframes premiumCompletePop {
+      0% { transform: scale(1); }
+      20% { transform: scale(1.02); }
+      100% { transform: scale(1); }
+    }
+    
+    @keyframes premiumCompleteFade {
+      0% {
+        opacity: 1;
+        transform: scale(1);
+        filter: blur(0);
+      }
+      40% {
+        opacity: 0.8;
+        transform: scale(0.99) translateX(4px);
+        filter: blur(1px);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(0.95) translateX(12px);
+        filter: blur(6px);
+      }
+    }
+
+    .animate-premium-complete {
+      animation: premiumCompletePop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, 
+                 premiumCompleteFade 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    @keyframes premiumCheckPop {
+      0% { transform: scale(0.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-premium-check {
+      animation: premiumCheckPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    /* Smooth Height Transition (Grid Trick) */
+    .grid-rows-transition {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--transition-duration, 0.5s) cubic-bezier(0.4, 0, 0.2, 1);
+      /* Eloquent easing */
+    }
+
+    .grid-rows-transition.is-expanded {
+      grid-template-rows: 1fr;
+    }
+
+    .expand-inner {
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    @keyframes checkBoom {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+
+      40% {
+        transform: scale(1.5);
+        opacity: 1;
+      }
+
+      70% {
+        transform: scale(0.9);
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .animate-check-boom {
+      animation: checkBoom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes taskPulse {
+      0% {
+        transform: scale(1);
+        box-shadow: none;
+      }
+
+      40% {
+        transform: scale(1.02);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      }
+
+      100% {
+        transform: scale(1);
+        box-shadow: none;
+      }
+    }
+
+    .animate-task-pulse {
+      animation: taskPulse 0.4s ease-out forwards;
+    }
+
+    @keyframes completePop {
+      0% {
+        transform: scale(1);
+      }
+
+      30% {
+        transform: scale(1.4);
+      }
+
+      60% {
+        transform: scale(0.9);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .animate-complete-pop {
+      animation: completePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes taskFadeOut {
+      0% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
+    .animate-task-fadeout {
+      animation: taskFadeOut 0.8s ease-out forwards;
+    }
+
+    @keyframes pop {
+      0% {
+        transform: scale(0);
+      }
+
+      70% {
+        transform: scale(1.2);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .animate-pop {
+      animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes bump {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.25);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .animate-bump {
+      animation: bump 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    .animate-slideDownBlur {
+      animation: slideDownBlur 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      will-change: transform, opacity, filter;
+    }
+
+    @keyframes successPop {
+      0% { opacity: 0; transform: scale(0.8); filter: blur(10px); }
+      15% { opacity: 1; transform: scale(1); filter: blur(0); }
+      85% { opacity: 1; transform: scale(1); filter: blur(0); }
+      100% { opacity: 0; transform: scale(1.05); filter: blur(10px); }
+    }
+
+    .animate-success-pop {
+      animation: successPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes reorderPulse {
+      0% { transform: scale(1); opacity: 1; filter: blur(0); }
+      50% { transform: scale(0.99); opacity: 0.7; filter: blur(2px); }
+      100% { transform: scale(1); opacity: 1; filter: blur(0); }
+    }
+
+    .animate-reorder {
+      animation: reorderPulse 0.4s ease-in-out;
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "uuid": "https://esm.sh/uuid@^13.0.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

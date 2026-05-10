@@ -1,0 +1,55 @@
+{
+  "name": "injaz---advanced-task-manager",
+  "private": true,
+  "version": "0.0.0",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite --port 4000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "compile:electron": "tsc -p tsconfig.electron.json",
+    "electron": "wait-on tcp:4000 && cross-env NODE_ENV=development electron .",
+    "electron:dev": "concurrently -k \"npm run dev\" \"npm run compile:electron && npm run electron\"",
+    "dist": "npm run build && npm run compile:electron && electron-builder",
+    "electron:build": "npm run dist",
+    "electron:run": "npm run compile:electron && electron ."
+  },
+  "build": {
+    "appId": "com.injaz.app",
+    "productName": "injaz---advanced-task-manager",
+    "win": {
+      "target": "nsis",
+      "icon": "Public/Injaz 1 (1).ico"
+    },
+    "nsis": {
+      "createDesktopShortcut": false
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ]
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "googleapis": "^171.4.0",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wait-on": "^9.0.3"
+  }
+}
