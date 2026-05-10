@@ -1425,6 +1425,29 @@ export const HabitsView = React.memo(function HabitsView({ habits, setHabits, se
         return toDateStr(n.getFullYear(), n.getMonth(), n.getDate());
     });
 
+    // Auto-update today when date changes or app resumes
+    useEffect(() => {
+        const updateToday = () => {
+            const n = getEffectiveDate();
+            const newTodayStr = toDateStr(n.getFullYear(), n.getMonth(), n.getDate());
+            setTodayStr(prev => {
+                if (prev !== newTodayStr) {
+                    console.log('Day transitioned! Updating todayStr to', newTodayStr);
+                    return newTodayStr;
+                }
+                return prev;
+            });
+        };
+
+        window.addEventListener('focus', updateToday);
+        const interval = setInterval(updateToday, 60000); // Check every minute
+
+        return () => {
+            window.removeEventListener('focus', updateToday);
+            clearInterval(interval);
+        };
+    }, []);
+
     const isHabitDueToday = useCallback((habit: Habit) => {
         // We consider a habit pending if its MOST RECENT due date (within 30 days) is untracked.
         const [endY, endM, endD] = todayStr.split('-').map(Number);
