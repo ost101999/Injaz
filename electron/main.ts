@@ -278,6 +278,7 @@ if (!gotTheLock) {
         createTray();
 
         // Check for updates and notify user
+        autoUpdater.autoDownload = false;
         autoUpdater.checkForUpdatesAndNotify();
 
         autoUpdater.on('checking-for-update', () => {
@@ -364,6 +365,10 @@ if (!gotTheLock) {
 
     ipcMain.on('quit-and-install', () => {
         autoUpdater.quitAndInstall();
+    });
+
+    ipcMain.on('download_update', () => {
+        autoUpdater.downloadUpdate();
     });
 
     ipcMain.on('maximize-window', () => {

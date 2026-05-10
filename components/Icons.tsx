@@ -45,7 +45,8 @@ import {
   Leaf,
   Sparkles,
   Menu,
-  Pin
+  Pin,
+  Bell
 } from 'lucide-react';
 
 export const Icons = {
@@ -95,5 +96,6 @@ export const Icons = {
   Menu,
   Pin,
   Image,
-  Archive
+  Archive,
+  Bell
 };
