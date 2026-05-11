@@ -4546,6 +4546,64 @@ export default function App() {
                                                                                                 e.dataTransfer.setData('colId', col.id);
                                                                                                 e.dataTransfer.effectAllowed = 'move';
                                                                                             }}
+                                                                                            onDragOver={e => {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                                e.currentTarget.classList.add('bg-indigo-50/80');
+                                                                                            }}
+                                                                                            onDragLeave={e => {
+                                                                                                e.currentTarget.classList.remove('bg-indigo-50/80');
+                                                                                            }}
+                                                                                            onDrop={e => {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                                e.currentTarget.classList.remove('bg-indigo-50/80');
+                                                                                                const draggedId = e.dataTransfer.getData('taskId');
+                                                                                                if (!draggedId || draggedId === task.id) return;
+                                                                                                
+                                                                                                modifyTasks(prev => {
+                                                                                                    let draggedTask: Task | null = null;
+                                                                                                    const removeFrom = (list: Task[]): Task[] => list.map(t => {
+                                                                                                        if (t.id === draggedId) { draggedTask = { ...t }; return null!; }
+                                                                                                        if (t.children) return { ...t, children: removeFrom(t.children).filter(Boolean) };
+                                                                                                        return t;
+                                                                                                    }).filter(Boolean);
+                                                                                                    
+                                                                                                    const checkDescendant = (t: Task, searchId: string): boolean => {
+                                                                                                        if (t.id === searchId) return true;
+                                                                                                        if (t.children) return t.children.some(c => checkDescendant(c, searchId));
+                                                                                                        return false;
+                                                                                                    };
+                                                                                                    
+                                                                                                    const findT = (list: Task[]): Task | null => {
+                                                                                                        for (const t of list) {
+                                                                                                            if (t.id === draggedId) return t;
+                                                                                                            if (t.children) {
+                                                                                                                const found = findT(t.children);
+                                                                                                                if (found) return found;
+                                                                                                            }
+                                                                                                        }
+                                                                                                        return null;
+                                                                                                    };
+                                                                                                    
+                                                                                                    const dt = findT(prev);
+                                                                                                    if (!dt) return prev;
+                                                                                                    if (checkDescendant(dt, task.id)) return prev;
+                                                                                                    
+                                                                                                    const updated = removeFrom(prev);
+                                                                                                    const insertTo = (list: Task[]): Task[] => list.map(t => {
+                                                                                                        if (t.id === task.id) {
+                                                                                                            return { 
+                                                                                                                ...t, 
+                                                                                                                children: [...(t.children || []), { ...dt, parentId: task.id }] 
+                                                                                                            };
+                                                                                                        }
+                                                                                                        if (t.children) return { ...t, children: insertTo(t.children) };
+                                                                                                        return t;
+                                                                                                    });
+                                                                                                    return insertTo(updated);
+                                                                                                });
+                                                                                            }}
                                                                                             className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
                                                                                             onClick={e => {
                                                                                                 const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
