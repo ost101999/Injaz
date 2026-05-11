@@ -4547,7 +4547,21 @@ export default function App() {
                                                                                                 e.dataTransfer.effectAllowed = 'move';
                                                                                             }}
                                                                                             className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
-                                                                                            onClick={e => handleStartInlineEdit(e, task)}
+                                                                                            onClick={e => {
+                                                                                                const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
+                                                                                                if (hasSubtasks) {
+                                                                                                    const target = e.target as HTMLElement;
+                                                                                                    const isTextClick = target.closest('[data-task-title]') !== null;
+                                                                                                    if (isTextClick) {
+                                                                                                        handleStartInlineEdit(e, task);
+                                                                                                    } else {
+                                                                                                        e.stopPropagation();
+                                                                                                        toggleFolderExpand(e, task.id);
+                                                                                                    }
+                                                                                                } else {
+                                                                                                    handleStartInlineEdit(e, task);
+                                                                                                }
+                                                                                            }}
                                                                                             onDoubleClick={e => {
                                                                                                 e.stopPropagation();
                                                                                                 handleStartInlineEdit(e, task);
@@ -4676,9 +4690,11 @@ export default function App() {
                                                                                                                 <Icons.ChevronDown size={12} />
                                                                                                             </button>
                                                                                                         )}
-                                                                                                        <span dir="auto" className={`flex-1 text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
-                                                                                                            {task.title || <span className="italic text-gray-300">بدون عنوان</span>}
-                                                                                                        </span>
+                                                                                                        <div className="flex-1 min-w-0 flex items-start">
+                                                                                                            <span data-task-title dir="auto" className={`text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere cursor-text ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
+                                                                                                                {task.title || <span className="italic text-gray-300">بدون عنوان</span>}
+                                                                                                            </span>
+                                                                                                        </div>
                                                                                                         {task.children && task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length > 0 && (
                                                                                                             <span className="text-[10px] text-gray-400/40 border border-gray-200/40 px-1.5 rounded-full font-en" style={{ fontFamily: 'Acme' }}>{task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length}</span>
                                                                                                         )}
