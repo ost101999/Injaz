@@ -4546,7 +4546,7 @@ export default function App() {
                                                                                                 e.dataTransfer.setData('colId', col.id);
                                                                                                 e.dataTransfer.effectAllowed = 'move';
                                                                                             }}
-                                                                                            className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-50' : ''}`}
+                                                                                            className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
                                                                                             onClick={e => handleStartInlineEdit(e, task)}
                                                                                             onDoubleClick={e => {
                                                                                                 e.stopPropagation();
