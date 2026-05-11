@@ -12,8 +12,8 @@ GhToken := "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"
 ; تشغيل الأوامر في سطر الأوامر
 ; 1. الانتقال لمجلد المشروع
 ; حذف ملفات exe والـ blockmap القديمة لتوفير المساحة
-FileDelete(ProjectPath "\dist\*.exe")
-FileDelete(ProjectPath "\dist\*.blockmap")
+FileDelete(ProjectPath "\release\*.exe")
+FileDelete(ProjectPath "\release\*.blockmap")
 
 RunWait("cmd.exe /c `"cd /d `"" ProjectPath "`" && npm --no-git-tag-version version patch && set GH_TOKEN=" GhToken " && npx electron-builder --publish always & pause`"")
 
