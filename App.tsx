@@ -4719,8 +4719,10 @@ export default function App() {
                                                                                                 )}
 
                                                                                                 {/* Sub-tasks with decorative vertical line and hooks */}
-                                                                                                {expandedFolderIds.has(task.id) && task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0 && (
-                                                                                                    <div className="mt-2 flex flex-col gap-1.5 pr-[4px] mr-[9px] relative">
+                                                                                                {task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0 && (
+                                                                                                    <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${expandedFolderIds.has(task.id) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+                                                                                                        <div className="overflow-hidden">
+                                                                                                            <div className="flex flex-col gap-1.5 pr-[4px] mr-[9px] relative pb-1">
                                                                                                         {/* Rounded "Quarter Square" connectors */}
                                                                                                         <div className="absolute top-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-t-2 border-indigo-100 rounded-tr-md" />
                                                                                                         <div className="absolute top-[10px] bottom-[10px] right-[-2px] border-r-2 border-indigo-100" />
@@ -4794,6 +4796,8 @@ export default function App() {
                                                                                                                 )}
                                                                                                             </div>
                                                                                                         ))}
+                                                                                                            </div>
+                                                                                                        </div>
                                                                                                     </div>
                                                                                                 )}
                                                                                             </div>
