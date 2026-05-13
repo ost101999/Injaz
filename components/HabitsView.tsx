@@ -859,7 +859,8 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                                     disabled={goalType === 'custom_date'}
                                 />
                             </div>
-                             <div className="flex-1 bg-gray-100/40 p-0.5 rounded-lg flex gap-0.5">
+                             
+                              <div className="flex-1 bg-gray-100/40 p-0.5 rounded-lg flex gap-0.5">
                                 {(['days', 'weeks', 'months', 'custom_date'] as const).map((type) => (
                                     <div key={type} className="flex-1 relative flex">
                                         <button 
@@ -895,9 +896,9 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                         </div>
 
                         {goalType === 'days' && (
-                            <div className="mt-4 animate-fadeIn p-3 rounded-xl border border-indigo-100/50 bg-white">
-                                <label className="text-xs font-bold text-gray-500 mb-1 block" style={{ fontFamily: 'Deco, Amiri, serif' }}>أنا حالياً في رقم كم؟</label>
-                                <div className="bg-gray-50/50 rounded-lg px-3 border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
+                            <div className="flex flex-col gap-1 mt-2 w-1/4">
+                                <label className="text-[11px] font-bold text-gray-500 mr-1" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من رقم:</label>
+                                <div className="bg-gray-50/50 rounded-lg px-4 border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
                                     <input 
                                         type="text" 
                                         inputMode="numeric"
@@ -907,12 +908,14 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                                             const val = e.target.value.replace(/[^0-9]/g, '');
                                             setStartValue(parseInt(val) || 0);
                                         }}
-                                        className="w-full text-sm font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
+                                        className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
                                         style={{ fontFamily: 'Acme, sans-serif' }}
                                     />
                                 </div>
                             </div>
                         )}
+
+
 
                         {goalType === 'custom_date' && showCustomCalendar && (() => {
                             const now = getEffectiveDate();
@@ -1273,7 +1276,7 @@ const HabitRow = React.memo(function HabitRow({
                             {progress && (
                                 <div className="absolute left-3 bottom-1 pointer-events-none z-20">
                                     <span className="text-[9px] font-black text-indigo-300/70" style={{ fontFamily: 'Acme' }}>
-                                        {habit.goal?.type === 'days' ? `${toAr(progress.current)} / ${toAr(progress.total)}` : `${toAr(progress.percent)}٪`}
+                                        {habit.goal?.type === 'days' ? `${toAr(progress.current)} من ${toAr(progress.total)}` : ''}
                                     </span>
                                 </div>
                             )}
