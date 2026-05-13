@@ -843,7 +843,7 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                                      <div className="flex-1 relative bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
                                          {!startValue && (
                                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                 <span className="text-[10px] text-gray-400" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من رقم:</span>
+                                                 <span className="text-[10px] text-gray-400 opacity-40" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من</span>
                                              </div>
                                          )}
                                          <input 
