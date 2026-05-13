@@ -1379,7 +1379,7 @@ const HabitRow = React.memo(function HabitRow({
                                                 )}
                                                 {doneCount >= 2 && (
                                                     <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                                                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 text-[8px] text-white items-center justify-center font-normal">
+                                                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 border border-green-500 text-[8px] text-green-600 items-center justify-center font-normal bg-[#dcfce7]">
                                                             {toAr(doneCount)}
                                                         </span>
                                                     </span>
