@@ -1283,7 +1283,7 @@ const HabitRow = React.memo(function HabitRow({
                             {/* Floating Progress Percentage */}
                             {progress && (
                                 <div className="absolute left-3 bottom-0 pointer-events-none z-20">
-                                    <span className="text-[9px] font-normal text-indigo-300/70">
+                                    <span className="text-[10px] font-normal text-indigo-300/70">
                                         {habit.goal?.type === 'days' ? `${toAr(progress.current)} من ${toAr(progress.total)}` : ''}
                                     </span>
                                 </div>
