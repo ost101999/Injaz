@@ -838,29 +838,6 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                         </div>
                         <div className="flex items-stretch gap-3 relative">
                              <div className="w-1/4 flex gap-2">
-                                 {/* Start Value Input */}
-                                 {goalType === 'days' && (
-                                     <div className="flex-1 relative bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
-                                         {!startValue && (
-                                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                 <span className="text-[10px] text-gray-400 opacity-40" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من</span>
-                                             </div>
-                                         )}
-                                         <input 
-                                             type="text" 
-                                             inputMode="numeric"
-                                             value={startValue || ''}
-                                             onFocus={e => e.target.select()}
-                                             onChange={e => {
-                                                 const val = e.target.value.replace(/[^0-9]/g, '');
-                                                 setStartValue(parseInt(val) || 0);
-                                             }}
-                                             className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
-                                             style={{ fontFamily: 'Acme, sans-serif' }}
-                                         />
-                                     </div>
-                                 )}
-                                 
                                  {/* Main Input */}
                                  <div className={`bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all ${goalType === 'days' ? 'flex-1' : 'w-full'} ${goalType === 'custom_date' ? 'opacity-0 pointer-events-none' : ''}`}>
                                     <input 
@@ -884,6 +861,29 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                                         disabled={goalType === 'custom_date'}
                                     />
                                 </div>
+
+                                 {/* Start Value Input */}
+                                 {goalType === 'days' && (
+                                     <div className="flex-1 relative bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
+                                         {!startValue && (
+                                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                 <span className="text-[10px] text-gray-400 opacity-40" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من</span>
+                                             </div>
+                                         )}
+                                         <input 
+                                             type="text" 
+                                             inputMode="numeric"
+                                             value={startValue || ''}
+                                             onFocus={e => e.target.select()}
+                                             onChange={e => {
+                                                 const val = e.target.value.replace(/[^0-9]/g, '');
+                                                 setStartValue(parseInt(val) || 0);
+                                             }}
+                                             className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
+                                             style={{ fontFamily: 'Acme, sans-serif' }}
+                                         />
+                                     </div>
+                                 )}
                              </div>
                              
                               <div className="flex-1 bg-gray-100/40 p-0.5 rounded-lg flex gap-0.5">
