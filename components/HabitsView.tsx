@@ -1379,9 +1379,8 @@ const HabitRow = React.memo(function HabitRow({
                                                 )}
                                                 {doneCount >= 2 && (
                                                     <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 text-[8px] text-white items-center justify-center font-bold" style={{ fontFamily: 'Acme' }}>
-                                                            {toAr(2)}
+                                                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 text-[8px] text-white items-center justify-center font-normal">
+                                                            {toAr(doneCount)}
                                                         </span>
                                                     </span>
                                                 )}
@@ -1889,11 +1888,7 @@ export const HabitsView = React.memo(function HabitsView({ habits, setHabits, se
                     let newCompletions;
                     
                     if (isDouble) {
-                        if (doneCount >= 2) {
-                            newCompletions = doneList.filter(d => d !== dateStr);
-                        } else {
-                            newCompletions = [...doneList.filter(d => d !== dateStr), dateStr, dateStr];
-                        }
+                        newCompletions = [...doneList, dateStr];
                     } else {
                         if (doneCount > 0) {
                             newCompletions = doneList.filter(d => d !== dateStr);
