@@ -52,6 +52,8 @@ const getEffectiveDate = () => {
 const toAr = (n: number | string): string =>
     String(n).replace(/[0-9]/g, d => String.fromCharCode(0x0660 + Number(d)));
 
+const isEnglishText = (text: string): boolean => !/[\u0600-\u06FF]/.test(text) && /[a-zA-Z]/.test(text);
+
 const getTodayStr = () => {
     const n = getEffectiveDate();
     return toDateStr(n.getFullYear(), n.getMonth(), n.getDate());
@@ -1177,7 +1179,12 @@ function HabitTimer({ habit, onComplete, onCancel }: { habit: Habit; onComplete:
                 <Icons.Clock size={24} />
             </div>
             <div>
-                <p className="text-xs font-bold text-indigo-400 mb-0.5">{habit.title}</p>
+                <p 
+                    className={`text-xs text-indigo-400 mb-0.5 ${isEnglishText(habit.title) ? 'font-normal' : 'font-bold'}`}
+                    style={isEnglishText(habit.title) ? { fontFamily: 'Acme, sans-serif' } : undefined}
+                >
+                    {habit.title}
+                </p>
                 <p className="text-xl font-black text-gray-800 tracking-wider tabular-nums" style={{ fontFamily: 'Acme' }}>{formatTime(timeLeft)}</p>
             </div>
             <div className="flex gap-2 mr-2">
@@ -1251,7 +1258,8 @@ const HabitRow = React.memo(function HabitRow({
                             <div className="flex-1 flex items-center justify-center min-w-0 gap-2">
                                 <div className="flex items-center gap-3 min-w-0 justify-center">
                                     <span 
-                                        className="text-[18px] font-medium text-gray-700 truncate hover:text-indigo-600 transition-colors leading-[1.7] pb-0.5"
+                                        className={`text-[18px] text-gray-700 truncate hover:text-indigo-600 transition-colors leading-[1.7] pb-0.5 ${isEnglishText(habit.title) ? 'font-normal' : 'font-medium'}`}
+                                        style={isEnglishText(habit.title) ? { fontFamily: 'Acme, sans-serif' } : undefined}
                                     >
                                         {habit.title}
                                     </span>
