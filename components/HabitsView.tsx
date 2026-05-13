@@ -837,28 +837,54 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                             <label className="text-[18px] font-black text-gray-800 tracking-tight" style={{ fontFamily: 'Deco, Amiri, serif' }}>الانـتـهاء</label>
                         </div>
                         <div className="flex items-stretch gap-3 relative">
-                             <div className={`bg-gray-50/50 rounded-lg px-4 border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all w-1/4 ${goalType === 'custom_date' ? 'opacity-0 pointer-events-none' : ''}`}>
-                                <input 
-                                    ref={goalValueRef}
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={goalValue || ''} 
-                                    onFocus={e => e.target.select()}
-                                    onChange={e => {
-                                        const val = e.target.value.replace(/[^0-9]/g, '');
-                                        setGoalValue(parseInt(val) || 0);
-                                    }}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                            handleSubmit();
-                                        }
-                                    }}
-                                    placeholder="0"
-                                    className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 placeholder:text-gray-300 placeholder:text-[12px] text-center"
-                                    style={{ fontFamily: 'Acme, sans-serif', direction: 'ltr' }}
-                                    disabled={goalType === 'custom_date'}
-                                />
-                            </div>
+                             <div className="w-1/4 flex gap-2">
+                                 {/* Start Value Input */}
+                                 {goalType === 'days' && (
+                                     <div className="flex-1 relative bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
+                                         {!startValue && (
+                                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                 <span className="text-[10px] text-gray-400" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من رقم:</span>
+                                             </div>
+                                         )}
+                                         <input 
+                                             type="text" 
+                                             inputMode="numeric"
+                                             value={startValue || ''}
+                                             onFocus={e => e.target.select()}
+                                             onChange={e => {
+                                                 const val = e.target.value.replace(/[^0-9]/g, '');
+                                                 setStartValue(parseInt(val) || 0);
+                                             }}
+                                             className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
+                                             style={{ fontFamily: 'Acme, sans-serif' }}
+                                         />
+                                     </div>
+                                 )}
+                                 
+                                 {/* Main Input */}
+                                 <div className={`bg-gray-50/50 rounded-lg border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all ${goalType === 'days' ? 'flex-1' : 'w-full'} ${goalType === 'custom_date' ? 'opacity-0 pointer-events-none' : ''}`}>
+                                    <input 
+                                        ref={goalValueRef}
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={goalValue || ''} 
+                                        onFocus={e => e.target.select()}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                            setGoalValue(parseInt(val) || 0);
+                                        }}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                handleSubmit();
+                                            }
+                                        }}
+                                        placeholder="0"
+                                        className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 placeholder:text-gray-300 placeholder:text-[12px] text-center"
+                                        style={{ fontFamily: 'Acme, sans-serif', direction: 'ltr' }}
+                                        disabled={goalType === 'custom_date'}
+                                    />
+                                </div>
+                             </div>
                              
                               <div className="flex-1 bg-gray-100/40 p-0.5 rounded-lg flex gap-0.5">
                                 {(['days', 'weeks', 'months', 'custom_date'] as const).map((type) => (
@@ -895,25 +921,7 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                             </div>
                         </div>
 
-                        {goalType === 'days' && (
-                            <div className="flex flex-col gap-1 mt-2 w-1/4">
-                                <label className="text-[11px] font-bold text-gray-500 mr-1" style={{ fontFamily: 'Deco, Amiri, serif' }}>البداية من رقم:</label>
-                                <div className="bg-gray-50/50 rounded-lg px-4 border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
-                                    <input 
-                                        type="text" 
-                                        inputMode="numeric"
-                                        value={startValue || ''}
-                                        onFocus={e => e.target.select()}
-                                        onChange={e => {
-                                            const val = e.target.value.replace(/[^0-9]/g, '');
-                                            setStartValue(parseInt(val) || 0);
-                                        }}
-                                        className="w-full text-base font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
-                                        style={{ fontFamily: 'Acme, sans-serif' }}
-                                    />
-                                </div>
-                            </div>
-                        )}
+
 
 
 
