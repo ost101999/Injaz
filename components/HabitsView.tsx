@@ -99,7 +99,7 @@ function getGoalProgress(habit: Habit): { current: number; total: number; percen
     const startDateStr = toDateStr(d.getFullYear(), d.getMonth(), d.getDate());
     const completionsCount = habit.completions.filter(c => c >= startDateStr).length;
     
-    let current = completionsCount;
+    let current = completionsCount + (habit.goal.startValue || 0);
     let total = habit.goal.value;
     
     if (habit.goal.type === 'custom_date') {
@@ -194,6 +194,7 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
     const [goalValue, setGoalValue] = useState(initialHabit?.goal?.value || 0);
     const [goalTargetDate, setGoalTargetDate] = useState<string | undefined>(initialHabit?.goal?.targetDate);
     const [goalTargetDateMonthOffset, setGoalTargetDateMonthOffset] = useState(0);
+    const [startValue, setStartValue] = useState(initialHabit?.goal?.startValue || 0);
     const [showCustomCalendar, setShowCustomCalendar] = useState(false);
     const [isFinished, setIsFinished] = useState(initialHabit?.isFinished || false);
     const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
@@ -313,7 +314,8 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
             type: goalType, 
             value: goalValue, 
             startDate: initialHabit?.goal?.startDate || startOfToday.getTime(),
-            targetDate: goalTargetDate
+            targetDate: goalTargetDate,
+            startValue: goalType === 'days' ? startValue : undefined
         } : undefined;
         onSave({ 
             title: title.trim(), 
@@ -892,6 +894,26 @@ function HabitEditModal({ initialHabit, onSave, onDelete, onClose, existingCateg
                             </div>
                         </div>
 
+                        {goalType === 'days' && (
+                            <div className="mt-4 animate-fadeIn p-3 rounded-xl border border-indigo-100/50 bg-white">
+                                <label className="text-xs font-bold text-gray-500 mb-1 block" style={{ fontFamily: 'Deco, Amiri, serif' }}>أنا حالياً في رقم كم؟</label>
+                                <div className="bg-gray-50/50 rounded-lg px-3 border border-gray-200/50 focus-within:bg-white focus-within:border-indigo-200 transition-all">
+                                    <input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        value={startValue || ''}
+                                        onFocus={e => e.target.select()}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                            setStartValue(parseInt(val) || 0);
+                                        }}
+                                        className="w-full text-sm font-medium bg-transparent py-1.5 outline-none text-gray-800 text-center"
+                                        style={{ fontFamily: 'Acme, sans-serif' }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {goalType === 'custom_date' && showCustomCalendar && (() => {
                             const now = getEffectiveDate();
                             const targetDateObj = new Date(now.getFullYear(), now.getMonth() + goalTargetDateMonthOffset, 1);
@@ -1251,7 +1273,7 @@ const HabitRow = React.memo(function HabitRow({
                             {progress && (
                                 <div className="absolute left-3 bottom-1 pointer-events-none z-20">
                                     <span className="text-[9px] font-black text-indigo-300/70" style={{ fontFamily: 'Acme' }}>
-                                        {toAr(progress.percent)}٪
+                                        {habit.goal?.type === 'days' ? `${toAr(progress.current)} / ${toAr(progress.total)}` : `${toAr(progress.percent)}٪`}
                                     </span>
                                 </div>
                             )}
@@ -1298,7 +1320,8 @@ const HabitRow = React.memo(function HabitRow({
                     );
                 }
 
-                const done = (habit.completions || []).includes(col.dateStr);
+                const doneCount = (habit.completions || []).filter(d => d === col.dateStr).length;
+                const done = doneCount > 0;
                 const isMissedInState = (habit.missed || []).includes(col.dateStr);
                 
                 // For spaced habits, don't show red (missed) if within 7 days unless explicitly marked
@@ -1322,7 +1345,7 @@ const HabitRow = React.memo(function HabitRow({
                             <div className="habit-row-anim-inner">
                                 <div className={`overflow-hidden py-2.5 opacity-100`}>
                                     <button
-                                        onClick={() => !col.isFuture && onToggle(habit.id, col.dateStr, 'done')}
+                                        onClick={(e) => !col.isFuture && onToggle(habit.id, col.dateStr, 'done', e.shiftKey)}
                                         onContextMenu={(e) => { e.preventDefault(); if (!col.isFuture) onToggle(habit.id, col.dateStr, 'missed'); }}
                                         className="w-full h-full flex items-center justify-center transition-all duration-150 active:scale-90 outline-none"
                                         style={{ cursor: col.isFuture ? 'default' : 'pointer' }}
@@ -1331,7 +1354,7 @@ const HabitRow = React.memo(function HabitRow({
                                             <span className="w-4 h-4 rounded-full border border-gray-200 block mx-auto opacity-30" />
                                         ) : (
                                             <span
-                                                className={`w-8 h-8 rounded-full border block mx-auto transition-all duration-300 transform ${done ? 'scale-105 shadow-sm' : missed ? 'scale-105 shadow-sm' : 'hover:scale-110 active:scale-95'} flex items-center justify-center`}
+                                                className={`w-8 h-8 rounded-full border block mx-auto transition-all duration-300 transform ${done ? 'scale-105 shadow-sm' : missed ? 'scale-105 shadow-sm' : 'hover:scale-110 active:scale-95'} flex items-center justify-center relative`}
                                                 style={{
                                                     backgroundColor: done ? '#dcfce7' : missed ? '#fef2f2' : 'transparent',
                                                     borderColor: done ? '#4ade80' : missed ? '#fca5a5' : '#e5e7eb',
@@ -1342,6 +1365,14 @@ const HabitRow = React.memo(function HabitRow({
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                                         <path d="M5 13c1.5 1.5 3 4 4 4s7-9 10-10" />
                                                     </svg>
+                                                )}
+                                                {doneCount >= 2 && (
+                                                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 text-[8px] text-white items-center justify-center font-bold" style={{ fontFamily: 'Acme' }}>
+                                                            {toAr(2)}
+                                                        </span>
+                                                    </span>
                                                 )}
                                             </span>
                                         )}
@@ -1827,7 +1858,7 @@ export const HabitsView = React.memo(function HabitsView({ habits, setHabits, se
         };
     }, [collapsedCategories, expansionSnapshot, habits, viewYear, viewMonth, toggleExpandAll, isActive]);
 
-    const handleToggle = useCallback((habitId: string, dateStr: string, type: 'done' | 'missed' = 'done') => {
+    const handleToggle = useCallback((habitId: string, dateStr: string, type: 'done' | 'missed' = 'done', isDouble: boolean = false) => {
         let shouldFinish = false;
         let habitTitle = '';
 
@@ -1843,10 +1874,26 @@ export const HabitsView = React.memo(function HabitsView({ habits, setHabits, se
                 
                 let updatedHabit: Habit;
                 if (type === 'done') {
-                    const isDone = doneList.includes(dateStr);
+                    const doneCount = doneList.filter(d => d === dateStr).length;
+                    let newCompletions;
+                    
+                    if (isDouble) {
+                        if (doneCount >= 2) {
+                            newCompletions = doneList.filter(d => d !== dateStr);
+                        } else {
+                            newCompletions = [...doneList.filter(d => d !== dateStr), dateStr, dateStr];
+                        }
+                    } else {
+                        if (doneCount > 0) {
+                            newCompletions = doneList.filter(d => d !== dateStr);
+                        } else {
+                            newCompletions = [...doneList, dateStr];
+                        }
+                    }
+
                     updatedHabit = {
                         ...h,
-                        completions: isDone ? doneList.filter(d => d !== dateStr) : [...doneList, dateStr],
+                        completions: newCompletions,
                         missed: missedList.filter(d => d !== dateStr)
                     };
                 } else {
