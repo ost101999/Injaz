@@ -32,6 +32,13 @@
     "nsis": {
       "createDesktopShortcut": false
     },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "Public/Injaz 1.png"
+    },
     "directories": {
       "output": "release"
     },

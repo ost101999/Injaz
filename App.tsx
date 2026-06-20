@@ -105,7 +105,18 @@ export default function App() {
     const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
     const isSyncingGoogleRef = useRef(false);
 
-
+    // --- SMART CLOUD FILE SYNC STATE ---
+    const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState<boolean>(() => {
+        return localStorage.getItem('injaz_cloud_sync_enabled') === 'true';
+    });
+    const [syncFilePath, setSyncFilePath] = useState<string | null>(() => {
+        return localStorage.getItem('injaz_sync_file_path');
+    });
+    const [lastSyncTime, setLastSyncTime] = useState<number>(() => {
+        return parseInt(localStorage.getItem('injaz_last_sync_time') || '0');
+    });
+    const clientInstanceId = useRef(Math.random().toString(36).substring(2, 10)).current;
+    const isImportingFromCloud = useRef<boolean>(false);
 
     // --- LISTS STATE ---
     const [lists, setLists] = useState<TaskList[]>(() => {
@@ -1052,6 +1063,185 @@ export default function App() {
     useEffect(() => {
         localStorage.setItem('injaz_active_list', activeListId);
     }, [activeListId]);
+
+    // --- EFFECT: SMART CLOUD FILE SYNC ---
+    useEffect(() => {
+        localStorage.setItem('injaz_cloud_sync_enabled', isCloudSyncEnabled.toString());
+    }, [isCloudSyncEnabled]);
+
+    useEffect(() => {
+        if (syncFilePath) {
+            localStorage.setItem('injaz_sync_file_path', syncFilePath);
+        } else {
+            localStorage.removeItem('injaz_sync_file_path');
+        }
+    }, [syncFilePath]);
+
+    // 1. Startup check: load from cloud file if cloud sync is enabled and has newer data
+    useEffect(() => {
+        if (isCloudSyncEnabled && syncFilePath) {
+            try {
+                const fs = (window as any).require?.('fs');
+                if (fs && fs.existsSync(syncFilePath)) {
+                    const stats = fs.statSync(syncFilePath);
+                    const mtime = stats.mtime.getTime();
+                    const lastKnownTime = parseInt(localStorage.getItem('injaz_last_sync_mtime') || '0');
+
+                    if (mtime > lastKnownTime) {
+                        const content = fs.readFileSync(syncFilePath, 'utf8');
+                        const imported = JSON.parse(content);
+
+                        isImportingFromCloud.current = true;
+
+                        if (imported.lists && Array.isArray(imported.lists)) {
+                            setLists(imported.lists);
+                            localStorage.setItem('injaz_lists', JSON.stringify(imported.lists));
+                        }
+                        if (imported.tasks && Array.isArray(imported.tasks)) {
+                            setTasks(imported.tasks);
+                            tasksRef.current = imported.tasks;
+                            localStorage.setItem('injaz_tasks', JSON.stringify(imported.tasks));
+                        }
+                        if (imported.habits && Array.isArray(imported.habits)) {
+                            setHabits(imported.habits);
+                            habitsRef.current = imported.habits;
+                            localStorage.setItem('injaz_habits', JSON.stringify(imported.habits));
+                        }
+                        if (imported.preferences) {
+                            setPreferences(imported.preferences);
+                            localStorage.setItem('injaz_preferences', JSON.stringify(imported.preferences));
+                        }
+
+                        localStorage.setItem('injaz_last_sync_mtime', mtime.toString());
+                        const now = Date.now();
+                        setLastSyncTime(now);
+                        localStorage.setItem('injaz_last_sync_time', now.toString());
+                        console.log('Cloud sync: Loaded newer data on startup.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load cloud sync file on startup:', err);
+            }
+        }
+    }, []); // Run once on mount
+
+    // 2. Local-to-Cloud Sync (Auto-save local modifications to the sync file)
+    useEffect(() => {
+        if (!isCloudSyncEnabled || !syncFilePath) return;
+
+        // Debounce write by 2 seconds to avoid filesystem overhead
+        const timer = setTimeout(() => {
+            if (isImportingFromCloud.current) {
+                // Skip writing back changes that were just loaded from the cloud
+                isImportingFromCloud.current = false;
+                return;
+            }
+
+            try {
+                const fs = (window as any).require?.('fs');
+                if (!fs) return;
+
+                const syncData = {
+                    clientInstanceId,
+                    timestamp: Date.now(),
+                    lists,
+                    tasks,
+                    habits,
+                    preferences
+                };
+
+                fs.writeFile(syncFilePath, JSON.stringify(syncData, null, 2), 'utf8', (err: any) => {
+                    if (err) {
+                        console.error('Failed to write to cloud sync file:', err);
+                    } else {
+                        fs.stat(syncFilePath, (statErr: any, stats: any) => {
+                            if (!statErr) {
+                                localStorage.setItem('injaz_last_sync_mtime', stats.mtime.getTime().toString());
+                            }
+                        });
+                        const now = Date.now();
+                        setLastSyncTime(now);
+                        localStorage.setItem('injaz_last_sync_time', now.toString());
+                        console.log('Cloud sync: Local changes saved to cloud file.');
+                    }
+                });
+            } catch (err) {
+                console.error('Error writing sync file:', err);
+            }
+        }, 2000);
+
+        return () => clearTimeout(timer);
+    }, [lists, tasks, habits, preferences, isCloudSyncEnabled, syncFilePath]);
+
+    // 3. Cloud-to-Local Sync (Watch for cloud modifications and load them)
+    useEffect(() => {
+        if (!isCloudSyncEnabled || !syncFilePath) return;
+
+        const fs = (window as any).require?.('fs');
+        if (!fs) return;
+
+        const checkInterval = setInterval(() => {
+            try {
+                fs.stat(syncFilePath, (err: any, stats: any) => {
+                    if (err) {
+                        // File might not exist yet, or is momentarily inaccessible
+                        return;
+                    }
+                    const mtime = stats.mtime.getTime();
+                    const lastKnownTime = parseInt(localStorage.getItem('injaz_last_sync_mtime') || '0');
+
+                    if (mtime > lastKnownTime) {
+                        fs.readFile(syncFilePath, 'utf8', (readErr: any, content: string) => {
+                            if (readErr) return;
+                            try {
+                                const imported = JSON.parse(content);
+                                
+                                // If the change was written by this client instance, ignore it
+                                if (imported.clientInstanceId === clientInstanceId) {
+                                    localStorage.setItem('injaz_last_sync_mtime', mtime.toString());
+                                    return;
+                                }
+
+                                // Apply newer cloud changes
+                                isImportingFromCloud.current = true;
+
+                                if (imported.lists && Array.isArray(imported.lists)) {
+                                    setLists(imported.lists);
+                                    localStorage.setItem('injaz_lists', JSON.stringify(imported.lists));
+                                }
+                                if (imported.tasks && Array.isArray(imported.tasks)) {
+                                    setTasks(imported.tasks);
+                                    tasksRef.current = imported.tasks;
+                                    localStorage.setItem('injaz_tasks', JSON.stringify(imported.tasks));
+                                }
+                                if (imported.habits && Array.isArray(imported.habits)) {
+                                    setHabits(imported.habits);
+                                    habitsRef.current = imported.habits;
+                                    localStorage.setItem('injaz_habits', JSON.stringify(imported.habits));
+                                }
+                                if (imported.preferences) {
+                                    setPreferences(imported.preferences);
+                                    localStorage.setItem('injaz_preferences', JSON.stringify(imported.preferences));
+                                }
+
+                                localStorage.setItem('injaz_last_sync_mtime', mtime.toString());
+                                const now = Date.now();
+                                setLastSyncTime(now);
+                                localStorage.setItem('injaz_last_sync_time', now.toString());
+                                setNotification({ message: 'تم تحديث البيانات تلقائياً من السحابة!', type: 'success' });
+                            } catch (e) {
+                                console.error('Failed to parse cloud sync file content:', e);
+                            }
+                        });
+                    }
+                });
+            } catch (watchErr) {
+                console.error('Error in cloud watcher interval:', watchErr);
+            }
+        }, 5000); // Poll every 5 seconds
+
+        return () => clearInterval(checkInterval);
+    }, [isCloudSyncEnabled, syncFilePath]);
 
     // --- EFFECT: HOTKEYS (Persistence & IPC) ---
     useEffect(() => {
@@ -4253,6 +4443,82 @@ export default function App() {
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* Divider */}
+                                            <div className="my-4 border-t border-gray-100"></div>
+
+                                            {/* Cloud File Sync */}
+                                            <div>
+                                                <h4 className="text-[13px] text-gray-500 font-bold mb-3">المزامنة السحابية الذكية (Smart Cloud Sync)</h4>
+                                                <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-4 shadow-sm">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-sm font-bold text-gray-700">مزامنة تلقائية للملفات</p>
+                                                            <p className="text-[11px] text-gray-400">حفظ وتحديث المهام تلقائياً عبر سحابتك الخاصة</p>
+                                                        </div>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isCloudSyncEnabled}
+                                                                onChange={(e) => {
+                                                                    const enabled = e.target.checked;
+                                                                    if (enabled && !syncFilePath) {
+                                                                        alert('يرجى تحديد مسار ملف المزامنة أولاً.');
+                                                                        return;
+                                                                    }
+                                                                    setIsCloudSyncEnabled(enabled);
+                                                                    if (enabled) {
+                                                                        setNotification({ message: 'تم تفعيل المزامنة السحابية!', type: 'success' });
+                                                                    } else {
+                                                                        setNotification({ message: 'تم إيقاف المزامنة السحابية.', type: 'success' });
+                                                                    }
+                                                                }}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <p className="text-xs font-bold text-gray-500">مسار ملف المزامنة:</p>
+                                                        <div className="flex gap-2">
+                                                            <input 
+                                                                type="text" 
+                                                                readOnly 
+                                                                placeholder="اختر ملفاً في Google Drive أو iCloud أو Dropbox..." 
+                                                                value={syncFilePath || ''} 
+                                                                className="flex-1 p-2 border border-gray-200 rounded-lg text-[11px] bg-gray-50 font-mono text-gray-600 truncate"
+                                                            />
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+                                                                        if (ipc) {
+                                                                            const filePath = await ipc.invoke('select-sync-file');
+                                                                            if (filePath) {
+                                                                                setSyncFilePath(filePath);
+                                                                                setNotification({ message: 'تم تحديد ملف المزامنة بنجاح!', type: 'success' });
+                                                                            }
+                                                                        }
+                                                                    } catch (err) {
+                                                                        console.error('Failed to select sync file:', err);
+                                                                    }
+                                                                }}
+                                                                className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs rounded-lg transition animate-pulse"
+                                                            >
+                                                                تحديد الملف
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {isCloudSyncEnabled && syncFilePath && (
+                                                        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+                                                            <span>الحالة: متصل بالملف ومزامن</span>
+                                                            <span>آخر مزامنة: {lastSyncTime > 0 ? new Date(lastSyncTime).toLocaleTimeString() : 'لا يوجد'}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
