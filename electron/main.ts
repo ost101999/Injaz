@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell, dialog } from 'electron';
 import path from 'path';
 import { google } from 'googleapis';
 import http from 'http';
@@ -1095,5 +1095,16 @@ if (!gotTheLock) {
             console.error('[Google Tasks] Create Error:', error);
             return null;
         }
+    });
+
+    ipcMain.handle('select-sync-file', async () => {
+        const { filePath } = await dialog.showSaveDialog(mainWindow!, {
+            title: 'اختر أو أنشئ ملف المزامنة السحابية (مثلاً في Google Drive أو iCloud)',
+            defaultPath: 'injaz_sync.json',
+            filters: [
+                { name: 'JSON Files', extensions: ['json'] }
+            ]
+        });
+        return filePath;
     });
 }
