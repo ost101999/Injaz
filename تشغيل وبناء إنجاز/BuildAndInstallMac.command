@@ -47,5 +47,5 @@ if [[ -e "$old_app" ]]; then
   osascript -e 'tell application "Finder" to delete POSIX file "/Applications/.injaz---advanced-task-manager.app.old"' || true
 fi
 
-open "$installed_app"
+env -u ELECTRON_RUN_AS_NODE open "$installed_app"
 echo "Installed and opened: $installed_app"
