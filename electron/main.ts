@@ -257,7 +257,9 @@ function createTray() {
     }
 }
 
-const gotTheLock = app.requestSingleInstanceLock();
+// macOS already activates the existing app bundle. Avoid Chromium's stale
+// singleton lock there, which can make a freshly installed copy quit at once.
+const gotTheLock = process.platform === 'darwin' || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     app.quit();
