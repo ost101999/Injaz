@@ -45,6 +45,25 @@ test('a successful build replaces the previous output', () => {
     assert.equal(fs.readdirSync(tools).some(name => name.startsWith('.previous-build-')), false);
 });
 
+test('a successful build starts the newly generated installer', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'injaz-build-install-test-'));
+    const tools = path.join(root, 'tools');
+    const bin = path.join(root, 'node_modules', '.bin');
+    fs.mkdirSync(tools, { recursive: true });
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(root, 'npm.cmd'), '@echo off\r\nexit /b 0\r\n');
+    fs.writeFileSync(path.join(bin, 'electron-builder.cmd'), '@echo off\r\nfor /d %%D in ("%CD%\\release\\.injaz-build-stage-*") do echo new>"%%~fD\\Injaz Setup.exe"\r\nexit /b 0\r\n');
+    fs.copyFileSync(path.join(__dirname, '..', 'تشغيل وبناء إنجاز', 'Build.ps1'), path.join(tools, 'Build.ps1'));
+    const wrapper = path.join(root, 'run.ps1');
+    fs.writeFileSync(wrapper, `function Start-Process { param($FilePath, [switch]$PassThru, [switch]$Wait) Set-Content -LiteralPath (Join-Path $env:TEST_ROOT 'launched.txt') -Value $FilePath; [pscustomobject]@{ ExitCode = 0 } }\n& (Join-Path $env:TEST_ROOT 'tools\\Build.ps1')\n`);
+    const env = { ...process.env, PATH: root + path.delimiter + process.env.PATH, TEST_ROOT: root, INJAZ_NONINTERACTIVE: '1' };
+    delete env.INJAZ_NO_OPEN;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', wrapper], { cwd: root, encoding: 'utf8', env, timeout: 15000 });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(fs.readFileSync(path.join(root, 'launched.txt'), 'utf8').trim(), path.join(tools, 'Build Output', 'Injaz Setup.exe'));
+    assert.match(result.stdout, /Installation completed/);
+});
+
 test('a temporary NSIS spawn EPERM is retried and the previous output is kept until success', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'injaz-build-test-'));
     const tools = path.join(root, 'tools');
