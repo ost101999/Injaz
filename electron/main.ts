@@ -25,6 +25,35 @@ let isQuitting = false;
 let wasMainWindowFullScreen = false;
 let wasMainWindowMaximized = false;
 
+/** Completely terminates the process instead of applying the normal hide-to-tray behavior. */
+function quitApp() {
+    if (isQuitting) return;
+    isQuitting = true;
+    app.quit();
+}
+
+/**
+ * Cmd+Escape is a legacy quit shortcut requested for Injaz.  It is scoped to
+ * an Injaz window, so it never closes the app while the user is working in a
+ * different application.
+ */
+function registerWindowQuitShortcut(win: BrowserWindow) {
+    win.webContents.on('before-input-event', (event, input) => {
+        const commandPressed = process.platform === 'darwin' ? input.meta : input.control;
+        if (input.type === 'keyDown' && input.key === 'Escape' && commandPressed) {
+            event.preventDefault();
+            quitApp();
+        }
+    });
+}
+
+// The native macOS Quit command (Cmd+Q) calls app.quit(). Mark it as an
+// intentional exit before window close handlers run, otherwise they would
+// hide the window and leave Injaz alive in the tray.
+app.on('before-quit', () => {
+    isQuitting = true;
+});
+
 function hideMainWindow() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     wasMainWindowFullScreen = mainWindow.isFullScreen();
@@ -116,6 +145,7 @@ function createMainWindow() {
             contextIsolation: false,
         },
     });
+    registerWindowQuitShortcut(mainWindow);
 
     // Load the Vite dev server URL or local file
     if (isDev) {
@@ -172,6 +202,7 @@ function createQuickAddWindow() {
             contextIsolation: false,
         }
     });
+    registerWindowQuitShortcut(win);
 
     if (isDev) {
         win.loadURL('http://localhost:4000/#/quick-add');
@@ -241,8 +272,7 @@ function createTray() {
             { label: 'Open Injaz', click: () => showMainWindow() },
             {
                 label: 'Quit', click: () => {
-                    isQuitting = true;
-                    app.quit();
+                    quitApp();
                 }
             }
         ]);
@@ -386,8 +416,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on('app-quit', () => {
-        isQuitting = true;
-        app.quit();
+        quitApp();
     });
 
     ipcMain.on('quit-and-install', () => {
