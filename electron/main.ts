@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell, dialog } from 'electron';
+import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell, dialog, safeStorage } from 'electron';
 import path from 'path';
+import * as fs from 'fs';
 import { google } from 'googleapis';
 import http from 'http';
 import url from 'url';
@@ -357,6 +358,30 @@ if (!gotTheLock) {
     });
 
     // --- IPC HANDLERS ---
+
+    // Only the main window can access the encrypted Firebase refresh token.
+    const sessionPath = () => path.join(app.getPath('userData'), 'firebase-session.bin');
+    const requireMainWindow = (event: Electron.IpcMainInvokeEvent) => {
+        if (!mainWindow || event.sender.id !== mainWindow.webContents.id) throw new Error('Unauthorized window');
+    };
+    ipcMain.handle('firebase-session:read', (event) => {
+        requireMainWindow(event);
+        if (!fs.existsSync(sessionPath())) return null;
+        if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable');
+        return safeStorage.decryptString(fs.readFileSync(sessionPath()));
+    });
+    ipcMain.handle('firebase-session:write', (event, value: string) => {
+        requireMainWindow(event);
+        if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable');
+        if (typeof value !== 'string' || value.length > 16384) throw new Error('Invalid session');
+        const temp = `${sessionPath()}.tmp`;
+        fs.writeFileSync(temp, safeStorage.encryptString(value));
+        fs.renameSync(temp, sessionPath());
+    });
+    ipcMain.handle('firebase-session:clear', (event) => {
+        requireMainWindow(event);
+        try { fs.unlinkSync(sessionPath()); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    });
 
     ipcMain.on('app-quit', () => {
         isQuitting = true;

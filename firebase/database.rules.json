@@ -1,0 +1,10 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "appState": {
+      ".read": "auth != null && auth.uid === 'idyOzbfKCBUQjnlVImyB9DVwlBI2'",
+      ".write": "auth != null && auth.uid === 'idyOzbfKCBUQjnlVImyB9DVwlBI2'"
+    }
+  }
+}
