@@ -32,25 +32,18 @@ if (process.argv.includes('--print-version')) {
 
 const version = computeVersion();
 const extraArgs = process.argv.slice(2);
-const builderBin = path.resolve(
-    __dirname,
-    '..',
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'electron-builder.cmd' : 'electron-builder'
-);
+const builderCli = require.resolve('electron-builder/out/cli/cli.js');
 
 console.log(`[Injaz Build] Building version ${version}...`);
 
 const result = spawnSync(
-    builderBin,
-    [`--config.extraMetadata.version=${version}`, ...extraArgs],
+    process.execPath,
+    [builderCli, `--config.extraMetadata.version=${version}`, ...extraArgs],
     {
         cwd: path.resolve(__dirname, '..'),
         stdio: 'inherit',
-        shell: process.platform === 'win32'
+        shell: false
     }
 );
 
 process.exit(result.status ?? 1);
-
