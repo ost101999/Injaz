@@ -4556,10 +4556,9 @@ export default function App() {
                         }}
                     >
                         {(() => {
-                            // Sort folders by priority (High=1 first), skip empty ones
+                            // sortedActiveTasks already reflects the selected sort mode.
                             const folders = sortedActiveTasks
-                                .filter(t => t.type === 'folder' && !t.isArchived)
-                                .sort((a, b) => a.priority - b.priority);
+                                .filter(t => t.type === 'folder' && !t.isArchived);
 
                             const ungrouped = sortedActiveTasks.filter(t => t.type !== 'folder');
 
