@@ -136,9 +136,13 @@ function createMainWindow() {
     const windowWidth = 1200;
     const windowHeight = 800;
 
+    // Give macOS a more compact initial window without limiting normal
+    // resizing, moving, or maximizing after launch.
+    const initialWindowWidth = process.platform === 'darwin' ? 1200 : 1753;
+    const initialWindowHeight = process.platform === 'darwin' ? 500 : 644;
     mainWindow = new BrowserWindow({
-        width: 1753,
-        height: 644,
+        width: initialWindowWidth,
+        height: initialWindowHeight,
         x: 0,
         y: 1,
         icon: ICON_PATH,
