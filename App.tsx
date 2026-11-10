@@ -2259,6 +2259,7 @@ export default function App() {
 
     const seenColumnsRef = useRef<Set<string>>(new Set());
     const hasPopulatedSeenColumnsRef = useRef(false);
+    const lastActiveGroupColRef = useRef<string | null>(null);
 
     // Auto-collapse newly populated groups (e.g. from quick note background additions)
     useEffect(() => {
@@ -3645,22 +3646,30 @@ export default function App() {
                         e.stopPropagation();
                         if (activeTab === 'tasks') {
                             if (viewMode === 'groups') {
-                                // Intelligent group selection for 'N'
-                                // 1. Find all folders that are currently acting as columns
-                                const folders = tasks.filter(t => t.type === 'folder' && t.listId === activeListId && !t.isArchived);
+                                // Intelligent group selection for 'N' following visual column order
+                                const folders = sortedActiveTasks.filter(t => t.type === 'folder' && !t.isArchived);
                                 const expandedFolders = folders.filter(f => {
                                     const hasActiveChildren = (f.children || []).some(c => !c.isCompleted);
-                                    return !collapsedGroupIds.has(f.id) && hasActiveChildren;
+                                    return !collapsedGroupIds.has(f.id) && (hasActiveChildren || folderActionPromptId === f.id || inlineEditingId === f.id);
                                 });
 
                                 let targetParentId: string | null = null;
-                                if (expandedFolders.length > 0) {
-                                    targetParentId = expandedFolders[0].id;
-                                } else if (!collapsedGroupIds.has('__ungrouped__')) {
-                                    targetParentId = null;
-                                } else {
-                                    // Fallback: If everything is collapsed, pick the first available or ungrouped
-                                    targetParentId = expandedFolders.length > 0 ? expandedFolders[0].id : null;
+                                const preferredColId = lastActiveGroupColRef.current;
+                                if (preferredColId && !collapsedGroupIds.has(preferredColId)) {
+                                    if (preferredColId === '__ungrouped__') {
+                                        targetParentId = null;
+                                    } else if (expandedFolders.some(f => f.id === preferredColId)) {
+                                        targetParentId = preferredColId;
+                                    }
+                                }
+                                if (targetParentId === null && preferredColId !== '__ungrouped__') {
+                                    if (expandedFolders.length > 0) {
+                                        targetParentId = expandedFolders[0].id;
+                                    } else if (!collapsedGroupIds.has('__ungrouped__')) {
+                                        targetParentId = null;
+                                    } else {
+                                        targetParentId = null;
+                                    }
                                 }
 
                                 const newId = addTask({ title: '', priority: Priority.Medium, parentId: targetParentId, listId: activeListId });
@@ -3738,21 +3747,28 @@ export default function App() {
             const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || activeEl?.isContentEditable;
             if (isInput || inlineEditingId) return;
 
+            // Compute columns in the exact visual order rendered in Group View
+            const folders = sortedActiveTasks.filter(t => t.type === 'folder' && !t.isArchived);
+            const ungrouped = sortedActiveTasks.filter(t => t.type !== 'folder');
+            const cols: string[] = [];
+            folders.forEach(folder => {
+                const activeChildren = (folder.children || []).filter(c => !c.isCompleted);
+                if (activeChildren.length > 0 || folderActionPromptId === folder.id || inlineEditingId === folder.id) {
+                    cols.push(folder.id);
+                }
+            });
+            if (ungrouped.length > 0) {
+                cols.push('__ungrouped__');
+            }
+
             // Toggle Expand/Collapse (W / ص)
             if (e.key === 'w' || e.key === 'W' || e.key === 'ص' || e.key === 'و') {
                 e.preventDefault();
-                const sortedActive = currentTasks.filter(t => (!t.isCompleted && !t.isArchived) || t.id === recentlyCompletedId);
-                const folders = sortedActive.filter(t => t.type === 'folder');
-                const allIds = folders.map(f => f.id);
-                if (sortedActive.some(t => t.type !== 'folder' && t.parentId === null)) {
-                    allIds.push('__ungrouped__');
-                }
-                
-                const isAnyCollapsed = allIds.some(id => collapsedGroupIds.has(id));
+                const isAnyCollapsed = cols.some(id => collapsedGroupIds.has(id));
                 if (isAnyCollapsed) {
                     setCollapsedGroupIds(new Set());
                 } else {
-                    setCollapsedGroupIds(new Set(allIds));
+                    setCollapsedGroupIds(new Set(cols));
                 }
                 return;
             }
@@ -3760,62 +3776,38 @@ export default function App() {
             // Collapse All Only (S / س)
             if (e.key === 's' || e.key === 'S' || e.key === 'س') {
                 e.preventDefault();
-                const sortedActive = currentTasks.filter(t => (!t.isCompleted && !t.isArchived) || t.id === recentlyCompletedId);
-                const folders = sortedActive.filter(t => t.type === 'folder');
-                const allIds = folders.map(f => f.id);
-                if (sortedActive.some(t => t.type !== 'folder' && t.parentId === null)) {
-                    allIds.push('__ungrouped__');
-                }
-                setCollapsedGroupIds(new Set(allIds));
+                setCollapsedGroupIds(new Set(cols));
                 return;
             }
-
 
             const isRight = e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'ي' || e.key === 'د';
             const isLeft = e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.key === 'ش';
 
             if (isRight || isLeft) {
-                // Replicate column calculation logic from JSX (lines 3900+)
-                const sortedActive = currentTasks.filter(t => (!t.isCompleted && !t.isArchived) || t.id === recentlyCompletedId);
-                const folders = sortedActive
-                    .filter(t => t.type === 'folder')
-                    .sort((a, b) => a.priority - b.priority);
-                const ungrouped = sortedActive.filter(t => t.type !== 'folder');
-
-                const cols: string[] = [];
-                folders.forEach(folder => {
-                    const activeChildren = (folder.children || []).filter(c => !c.isCompleted);
-                    if (activeChildren.length > 0 || folderActionPromptId === folder.id) {
-                        cols.push(folder.id);
-                    }
-                });
-
-                if (ungrouped.length > 0) {
-                    cols.push('__ungrouped__');
-                }
-
                 if (cols.length === 0) return;
 
-                // Find currently "open" column
-                let currentIndex = cols.findIndex(id => !collapsedGroupIds.has(id));
-                let nextIndex;
-
+                // Prefer the last interacted open column so multi-open navigation moves sequentially
+                let currentIndex = -1;
+                if (lastActiveGroupColRef.current && !collapsedGroupIds.has(lastActiveGroupColRef.current)) {
+                    currentIndex = cols.indexOf(lastActiveGroupColRef.current);
+                }
                 if (currentIndex === -1) {
-                    // If all closed, start at the first one
+                    currentIndex = cols.findIndex(id => !collapsedGroupIds.has(id));
+                }
+
+                let nextIndex: number;
+                if (currentIndex === -1) {
+                    // If all closed, start at the first one (or last one if pressing Right)
                     nextIndex = 0;
                 } else {
-                    nextIndex = currentIndex;
                     // RTL Support: Right goes to lower index (visually right), Left goes to higher index (visually left)
-                    if (isRight) {
-                        nextIndex = currentIndex - 1;
-                    } else if (isLeft) {
-                        nextIndex = currentIndex + 1;
-                    }
+                    nextIndex = isRight ? currentIndex - 1 : currentIndex + 1;
                 }
 
                 if (nextIndex >= 0 && nextIndex < cols.length) {
                     e.preventDefault();
                     const targetId = cols[nextIndex];
+                    lastActiveGroupColRef.current = targetId;
                     
                     // Simulate click: Open target and handle auto-collapse
                     setCollapsedGroupIds(prev => {
@@ -3843,7 +3835,7 @@ export default function App() {
 
         window.addEventListener('keydown', handleWidgetNavigation);
         return () => window.removeEventListener('keydown', handleWidgetNavigation);
-    }, [activeTab, viewMode, currentTasks, recentlyCompletedId, collapsedGroupIds, folderActionPromptId, preferences.autoCollapse, inlineEditingId]);
+    }, [activeTab, viewMode, sortedActiveTasks, collapsedGroupIds, folderActionPromptId, preferences.autoCollapse, inlineEditingId]);
 
     return (
         <div
@@ -4681,12 +4673,16 @@ export default function App() {
                                                 const isCurrentlyCollapsed = next.has(col.id);
                                                 if (isCurrentlyCollapsed) {
                                                     // Opening this column
+                                                    lastActiveGroupColRef.current = col.id;
                                                     next.delete(col.id);
                                                     // autoCollapse: collapse all other columns
                                                     if (preferences.autoCollapse) {
                                                         columns.forEach(c => { if (c.id !== col.id) next.add(c.id); });
                                                     }
                                                 } else {
+                                                    if (lastActiveGroupColRef.current === col.id) {
+                                                        lastActiveGroupColRef.current = null;
+                                                    }
                                                     next.add(col.id);
                                                 }
                                                 return next;
