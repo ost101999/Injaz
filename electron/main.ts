@@ -1003,17 +1003,19 @@ if (!gotTheLock) {
                     `);
 
                     if (!settled) {
-                        settled = true;
                         server.close();
                         const { tokens } = await oauth2Client.getToken(code);
                         oauth2Client.setCredentials(tokens);
+                        settled = true;
                         resolve(tokens);
                     }
                 } catch (e) {
                     if (!settled) {
                         settled = true;
-                        res.writeHead(500);
-                        res.end('Authentication failed.');
+                        if (!res.headersSent) {
+                            res.writeHead(500);
+                            res.end('Authentication failed.');
+                        }
                         server.close();
                         reject(e);
                     }
@@ -1047,11 +1049,17 @@ if (!gotTheLock) {
         try {
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
-            const res = await tasksApi.tasklists.list();
-            return res.data.items || [];
+            const lists = [];
+            let pageToken: string | undefined;
+            do {
+                const res = await tasksApi.tasklists.list({ maxResults: 100, pageToken });
+                lists.push(...(res.data.items || []));
+                pageToken = res.data.nextPageToken || undefined;
+            } while (pageToken);
+            return lists;
         } catch (error) {
             console.error('[Google Tasks] Fetch Lists Error:', error);
-            return [];
+            throw new Error('تعذر تحميل قوائم مهام جوجل');
         }
     });
 
@@ -1064,22 +1072,28 @@ if (!gotTheLock) {
             const ids = listIds && listIds.length > 0 ? listIds : ['@default'];
 
             for (const listId of ids) {
-                const res = await tasksApi.tasks.list({
-                    tasklist: listId,
-                    showCompleted: true,
-                    showHidden: true,
-                    maxResults: 100
-                });
-                if (res.data.items) {
-                    const tasksWithListId = res.data.items.map(t => ({ ...t, listId }));
-                    allTasks = [...allTasks, ...tasksWithListId];
-                }
+                let pageToken: string | undefined;
+                do {
+                    const res = await tasksApi.tasks.list({
+                        tasklist: listId,
+                        showCompleted: true,
+                        showHidden: true,
+                        maxResults: 100,
+                        pageToken
+                    });
+                    if (res.data.items) {
+                        const tasksWithListId = res.data.items.map(t => ({ ...t, listId }));
+                        allTasks = [...allTasks, ...tasksWithListId];
+                    }
+                    pageToken = res.data.nextPageToken || undefined;
+                } while (pageToken);
             }
             
             return { tasks: allTasks };
         } catch (error) {
             console.error('Google Tasks Fetch Error:', error);
-            return { tasks: [] };
+            // A failed request must never look like an empty, successful snapshot.
+            throw new Error('تعذر تحميل مهام جوجل؛ لم يتم تغيير المهام المحلية');
         }
     });
 
@@ -1100,11 +1114,11 @@ if (!gotTheLock) {
             return true;
         } catch (error) {
             console.error('[Google Tasks] Update Error:', error);
-            return false;
+            throw new Error('تعذر حفظ تعديل المهمة في جوجل');
         }
     });
 
-    ipcMain.handle('google-tasks:create-task', async (event, { tokens, listId, title, parentId }) => {
+    ipcMain.handle('google-tasks:create-task', async (event, { tokens, listId, title, parentId, completed }) => {
         try {
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
@@ -1114,13 +1128,13 @@ if (!gotTheLock) {
                 parent: parentId,
                 requestBody: {
                     title: title || '(بدون عنوان)',
-                    status: 'needsAction'
+                    status: completed ? 'completed' : 'needsAction'
                 }
             });
             return res.data.id;
         } catch (error) {
             console.error('[Google Tasks] Create Error:', error);
-            return null;
+            throw new Error('تعذر إنشاء المهمة في جوجل');
         }
     });
 

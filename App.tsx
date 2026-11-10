@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit } from './types';
 import { Icons } from './components/Icons';
@@ -6,6 +6,7 @@ import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
 import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
+import { flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -105,6 +106,17 @@ export default function App() {
     const [isGoogleListsExpanded, setIsGoogleListsExpanded] = useState(false);
     const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
     const isSyncingGoogleRef = useRef(false);
+    const googleSyncRequestedRef = useRef(false);
+    const googleSyncRunnerRef = useRef<(() => void) | null>(null);
+    const [googleSyncError, setGoogleSyncError] = useState('');
+    const googleEditingRef = useRef<string | null>(null);
+    const googleContextRef = useRef('');
+    const googleContext = JSON.stringify([googleTokens, googleSelectedListIds, googleListId]);
+    googleContextRef.current = googleContext;
+    const googleAccountRef = useRef('');
+    googleAccountRef.current = JSON.stringify(googleTokens);
+    const googleDefaultListRef = useRef<string | undefined>(undefined);
+    googleDefaultListRef.current = googleSelectedListIds[0] || googleListId || '@default';
 
     // --- SMART CLOUD FILE SYNC STATE ---
     const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState<boolean>(() => {
@@ -184,7 +196,8 @@ export default function App() {
                 return t;
             });
         };
-        return migrateTasks(loadedTasks);
+        const migrated = migrateTasks(loadedTasks);
+        return markGoogleChanges(migrated, migrated, googleDefaultListRef.current);
     });
 
     const findTask = (id: string, list: Task[]): Task | undefined => {
@@ -208,10 +221,8 @@ export default function App() {
     const setTasksRef = useRef(setTasks); // Keep ref to setTasks
     const setHabitsRef = useRef<React.Dispatch<React.SetStateAction<Habit[]>> | null>(null);
 
-    // Initialize tasksRef with initial tasks value
-    if (tasksRef.current.length === 0 && tasks.length > 0) {
-        tasksRef.current = tasks;
-    }
+    // Keep async sync work and undo/redo on the current rendered snapshot.
+    tasksRef.current = tasks;
 
     // Keep setTasksRef updated
     setTasksRef.current = setTasks;
@@ -236,90 +247,63 @@ export default function App() {
         return 'auto';
     };
 
+    const applyGoogleState = useCallback((update: (current: Task[]) => Task[]) => {
+        const next = update(tasksRef.current);
+        tasksRef.current = next;
+        // Persist the server ID immediately to avoid recreating an acknowledged task.
+        localStorage.setItem('injaz_tasks', JSON.stringify(next));
+        setTasks(next);
+    }, []);
+
     const syncGoogleTasks = useCallback(async (tokens = googleTokens, forceSwitch = false) => {
-        if (!tokens || isSyncingGoogleRef.current) return;
+        if (!tokens) return;
+        if (isSyncingGoogleRef.current) {
+            googleSyncRequestedRef.current = true;
+            return;
+        }
+        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+        if (!ipc) return;
         isSyncingGoogleRef.current = true;
         setIsSyncingGoogle(true);
+        const context = googleContext;
+        const isCurrent = () => googleContextRef.current === context;
+        const account = JSON.stringify(tokens);
         try {
-            const ipc = (window as any).require?.('electron')?.ipcRenderer;
-            if (!ipc) return;
-
-            // Fetch all selected lists
-            const selectedIds = googleSelectedListIds.length > 0 ? googleSelectedListIds : [googleListId || '@default'];
-            const result = await ipc.invoke('google-tasks:fetch', { tokens, listIds: selectedIds });
-            const { tasks: gTasks } = result;
-
-            if (!gTasks) {
-                setIsSyncingGoogle(false);
-                return;
-            }
-
-            const targetListId = lists.length > 0 ? lists[0].id : 'default';
-
-            setTasks(prev => {
-                // Keep only non-google synced tasks
-                const otherTasks = prev.filter(t => !t.isGoogleSynced && t.id !== 'google_main_folder' && !t.id.startsWith('google_'));
-                
-                const googleFolderId = 'google_main_folder';
-                const rootGTasks = gTasks.filter((gt: any) => !gt.parent);
-                const subGTasks = gTasks.filter((gt: any) => !!gt.parent);
-
-                const buildTask = (gt: any, parentId: string): Task => {
-                    const taskId = `google_${gt.id}`;
-                    const taskSubtasks = subGTasks.filter((st: any) => st.parent === gt.id);
-                    return {
-                        id: taskId,
-                        googleTaskId: gt.id,
-                        googleListId: gt.listId, // Now provided by the main process
-                        title: gt.title || '(بدون عنوان)',
-                        type: 'item',
-                        priority: Priority.Medium,
-                        color: '#4285F4',
-                        parentId: parentId,
-                        listId: targetListId, // Injected into the primary list
-                        isGoogleSynced: true,
-                        isCompleted: gt.status === 'completed',
-                        createdAt: new Date(gt.updated || Date.now()).getTime(),
-                        completedAt: gt.completed ? new Date(gt.completed).getTime() : undefined,
-                        dueDate: gt.due ? gt.due.split('T')[0] : undefined,
-                        children: taskSubtasks.map((st: any) => buildTask(st, taskId))
-                    };
-                };
-
-                const googleFolder: Task = {
-                    id: googleFolderId,
-                    title: 'مهام جوجل',
-                    type: 'folder',
-                    color: '#4285F4',
-                    priority: Priority.Medium,
-                    parentId: null,
-                    listId: targetListId, // Root of the primary list
-                    isGoogleSynced: true,
-                    isCompleted: false,
-                    createdAt: Date.now(),
-                    children: rootGTasks.map((gt: any) => buildTask(gt, googleFolderId))
-                };
-
-                return [...otherTasks, googleFolder];
+            await uploadGoogleChanges({
+                getTasks: () => tasksRef.current, apply: applyGoogleState,
+                invoke: (name, data) => ipc.invoke(name, data), tokens,
+                isCurrent: () => googleAccountRef.current === account
             });
-
-            // Cleanup: Remove any "google_tasks" list if it exists
-            setLists(prev => prev.filter(l => l.id !== 'google_tasks'));
-
-            if (forceSwitch) {
-                setActiveListId(targetListId);
-                setViewMode('groups');
-                setActiveTab('tasks');
-                localStorage.setItem('injaz_active_list', targetListId);
+            if (!isCurrent()) return;
+            // Uncommitted editor text must not be replaced by a background pull.
+            if (!googleEditingRef.current) {
+                const selectedIds = googleSelectedListIds.length > 0 ? googleSelectedListIds : [googleListId || '@default'];
+                const result = await ipc.invoke('google-tasks:fetch', { tokens, listIds: selectedIds });
+                if (!result || !Array.isArray(result.tasks)) throw new Error('تعذر جلب مهام جوجل');
+                if (!isCurrent() || googleEditingRef.current) return;
+                const targetListId = lists[0]?.id || 'default';
+                applyGoogleState(prev => mergeGoogleTasks(prev, result.tasks, targetListId));
+                if (forceSwitch) {
+                    setActiveListId(targetListId);
+                    setViewMode('groups');
+                    setActiveTab('tasks');
+                    localStorage.setItem('injaz_active_list', targetListId);
+                }
             }
-
+            setGoogleSyncError('');
         } catch (error) {
             console.error('[Sync] Failed to sync Google Tasks:', error);
+            if (isCurrent()) setGoogleSyncError('تعذرت المزامنة مع جوجل. تغييراتك محفوظة محلياً؛ أعد المحاولة عند عودة الاتصال.');
         } finally {
             isSyncingGoogleRef.current = false;
             setIsSyncingGoogle(false);
+            if (googleSyncRequestedRef.current) {
+                googleSyncRequestedRef.current = false;
+                setTimeout(() => googleSyncRunnerRef.current?.(), 0);
+            }
         }
-    }, [googleTokens, googleSelectedListIds, googleListId]);
+    }, [googleTokens, googleSelectedListIds, googleListId, googleContext, lists, applyGoogleState]);
+    googleSyncRunnerRef.current = () => { void syncGoogleTasks(); };
 
     const initialSyncDone = useRef(false);
     useEffect(() => {
@@ -327,6 +311,7 @@ export default function App() {
             const ipc = (window as any).require?.('electron')?.ipcRenderer;
             if (ipc) {
                 ipc.invoke('google-tasks:fetch-lists', googleTokens).then((lists: any[]) => {
+                    if (googleContextRef.current !== googleContext) return;
                     setGoogleAllLists(lists);
                     // If none selected yet, default to the primary one
                     if (googleSelectedListIds.length === 0 && lists.length > 0) {
@@ -334,6 +319,9 @@ export default function App() {
                         setGoogleSelectedListIds([primary]);
                         localStorage.setItem('injaz_google_selected_lists', JSON.stringify([primary]));
                     }
+                }).catch(error => {
+                    console.error('[Google Tasks] Lists:', error);
+                    setGoogleSyncError('تعذر تحميل قوائم جوجل. أعد المحاولة.');
                 });
             }
         }
@@ -375,7 +363,8 @@ export default function App() {
     // Wrapper to set tasks and save to unified undo stack
     const modifyTasks = useCallback((newTasksOrFn: Task[] | ((prev: Task[]) => Task[]), merge = false) => {
         setTasks(prev => {
-            const next = typeof newTasksOrFn === 'function' ? newTasksOrFn(prev) : newTasksOrFn;
+            const changed = typeof newTasksOrFn === 'function' ? newTasksOrFn(prev) : newTasksOrFn;
+            const next = changed === prev ? prev : markGoogleChanges(prev, changed, googleDefaultListRef.current);
             if (next !== prev) {
                 if (!merge) {
                     undoStackRef.current = [...undoStackRef.current, { type: 'tasks', state: prev }];
@@ -516,8 +505,9 @@ export default function App() {
                 if (entry.type === 'tasks') {
                     const current = tasksRef.current;
                     redoStackRef.current = [{ type: 'tasks', state: current }, ...redoStackRef.current];
-                    tasksRef.current = entry.state;
-                    flushSync(() => setTasksRef.current(entry.state));
+                    const restored = markGoogleChanges(current, entry.state, googleDefaultListRef.current);
+                    tasksRef.current = restored;
+                    flushSync(() => setTasksRef.current(restored));
                 } else if (entry.type === 'habits') {
                     const current = habitsRef.current;
                     redoStackRef.current = [{ type: 'habits', state: current }, ...redoStackRef.current];
@@ -539,8 +529,9 @@ export default function App() {
                 if (entry.type === 'tasks') {
                     const current = tasksRef.current;
                     undoStackRef.current = [...undoStackRef.current, { type: 'tasks', state: current }];
-                    tasksRef.current = entry.state;
-                    flushSync(() => setTasksRef.current(entry.state));
+                    const restored = markGoogleChanges(current, entry.state, googleDefaultListRef.current);
+                    tasksRef.current = restored;
+                    flushSync(() => setTasksRef.current(restored));
                 } else if (entry.type === 'habits') {
                     const current = habitsRef.current;
                     undoStackRef.current = [...undoStackRef.current, { type: 'habits', state: current }];
@@ -798,6 +789,16 @@ export default function App() {
 
     // --- INLINE EDITING STATE ---
     const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+    googleEditingRef.current = inlineEditingId;
+
+    useEffect(() => {
+        if (!googleTokens || isSyncingGoogle || googleSyncError) return;
+        const pending = flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' &&
+            (t.googleSyncPending || !t.googleTaskId) && t.title.trim());
+        if (!pending) return;
+        const timer = setTimeout(() => { void syncGoogleTasks(); }, 500);
+        return () => clearTimeout(timer);
+    }, [tasks, googleTokens, syncGoogleTasks, isSyncingGoogle, googleSyncError]);
     const [inlineEditText, setInlineEditText] = useState('');
     const cancelInlineEdit = useCallback(() => {
         setInlineEditingId(null);
@@ -2083,22 +2084,6 @@ export default function App() {
     const removeTaskById = (list: Task[], idToRemove: string): Task[] => { return removeTaskRecursive(list, idToRemove); };
 
     const updateTask = (id: string, updates: Partial<Task>, merge = false) => {
-        // Sync title to Google if it's a synced task
-        if (updates.title !== undefined) {
-            const task = findTask(id, tasks);
-            if (task && task.isGoogleSynced && task.googleTaskId) {
-                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                if (ipc) {
-                    ipc.invoke('google-tasks:update-task', {
-                        tokens: googleTokens,
-                        taskId: task.googleTaskId,
-                        listId: googleListId,
-                        title: updates.title
-                    });
-                }
-            }
-        }
-
         modifyTasks(prevTasks => {
             const originalTask = findTask(id, prevTasks);
 
@@ -2185,7 +2170,7 @@ export default function App() {
         }
 
         const taskId = inlineEditingId;
-        const task = findTask(taskId, tasks);
+        const task = findTask(taskId, tasksRef.current);
 
         // Clear state first
         setInlineEditingId(null);
@@ -2199,87 +2184,32 @@ export default function App() {
             const trimmedTitle = newText.trim();
             updateTask(taskId, { title: trimmedTitle }, true);
 
-            // If it's a google task, create it on Google
-            if (task.isGoogleSynced && !task.googleTaskId) {
-                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                if (ipc) {
-                    // We find the parent's google taskId if possible
-                    let googleParentId: string | undefined = undefined;
-                    if (task.parentId && task.parentId !== 'google_main_folder') {
-                        const parentTask = findTask(task.parentId, tasks);
-                        if (parentTask && parentTask.googleTaskId) {
-                            googleParentId = parentTask.googleTaskId;
-                        }
-                    }
-
-                    ipc.invoke('google-tasks:create-task', {
-                        tokens: googleTokens,
-                        listId: googleListId,
-                        title: trimmedTitle,
-                        parentId: googleParentId
-                    }).then(newGoogleId => {
-                        if (newGoogleId) {
-                            updateTask(taskId, { googleTaskId: newGoogleId }, true);
-                        }
-                    });
-                }
-            }
         } else {
             updateTask(taskId, { title: newText.trim() });
         }
     };
 
-    // Set innerHTML when inline editing starts (but don't reset on every render)
-    useEffect(() => {
+    // The browser owns the draft DOM while typing. Seed it only when switching
+    // editors; React rerenders and input state must not replace text or selection.
+    useLayoutEffect(() => {
         if (inlineEditingId && inlineEditRef.current) {
             const element = inlineEditRef.current;
-
-            // Scroll element into view - use 'auto' for instant scroll
-            // Scroll element into view - removed as per user request to prevent jumping
-            // element.scrollIntoView({ behavior: 'auto', block: 'center' });
-
-            // Set content
-            element.innerHTML = inlineEditText || '';
-
-            // Focus immediately
+            element.textContent = inlineEditText || '';
             element.focus();
-
-            // Move cursor to start for empty content (ready for typing)
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    const sel = window.getSelection();
-                    if (!element) return;
-
-                    // 1. Try to position based on Click Coordinates (if available)
-                    if (clickPosRef.current && document.caretRangeFromPoint) {
-                        const range = document.caretRangeFromPoint(clickPosRef.current.x, clickPosRef.current.y);
-                        if (range && element.contains(range.startContainer)) {
-                            sel?.removeAllRanges();
-                            sel?.addRange(range);
-                            clickPosRef.current = null; // Consume
-                            element.focus(); // Ensure focus
-                            return;
-                        }
-                    }
-
-                    // 2. Fallback: Collapse to end
-                    const range = document.createRange();
-                    if (element.childNodes.length > 0) {
-                        range.selectNodeContents(element);
-                        range.collapse(false); // Collapse to end
-                    } else {
-                        range.setStart(element, 0);
-                        range.collapse(true);
-                    }
-                    sel?.removeAllRanges();
-                    sel?.addRange(range);
-
-                    // Final focus
-                    element.focus();
-                });
-            });
+            const selection = window.getSelection();
+            const click = clickPosRef.current;
+            clickPosRef.current = null;
+            const clickedRange = click && document.caretRangeFromPoint?.(click.x, click.y);
+            const range = clickedRange && element.contains(clickedRange.startContainer)
+                ? clickedRange : document.createRange();
+            if (range !== clickedRange) {
+                range.selectNodeContents(element);
+                range.collapse(false);
+            }
+            selection?.removeAllRanges();
+            selection?.addRange(range);
         }
-    }, [inlineEditingId, inlineEditText]);
+    }, [inlineEditingId]);
 
 
     // Auto-collapse groups on first entry based on behavior setting
@@ -2427,7 +2357,7 @@ export default function App() {
                         const isNowComplete = !t.isCompleted;
 
                         // NEW LOGIC: Only apply "Reset to Empty" if the parent is NOT a folder (i.e. it's a regular task with subtasks)
-                        if (isNowComplete && t.parentId && t.parentId !== 'root') {
+                        if (isNowComplete && !t.isGoogleSynced && t.parentId && t.parentId !== 'root') {
                             const parent = findTask(t.parentId, prevTasks);
                             if (parent && parent.type !== 'folder') {
                                 // Count active non-empty siblings including this one
@@ -2443,17 +2373,6 @@ export default function App() {
                             }
                         }
 
-                        if (t.isGoogleSynced && t.googleTaskId) {
-                            try {
-                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                if (ipc) ipc.invoke('google-tasks:update-task', { 
-                                    tokens: googleTokens, 
-                                    taskId: t.googleTaskId, 
-                                    listId: t.googleListId || googleListId, 
-                                    completed: isNowComplete 
-                                });
-                            } catch (e) { console.error('Failed to update Google Task:', e); }
-                        }
                         return {
                             ...t,
                             isCompleted: isNowComplete,
@@ -3075,18 +2994,6 @@ export default function App() {
                     // If specifically selected, mark complete
                     if (selectedTaskIds.has(t.id) && !t.isCompleted) {
                         newTask = { ...t, isCompleted: true };
-                        // Sync to Google
-                        if (t.isGoogleSynced && t.googleTaskId) {
-                            try {
-                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                if (ipc) ipc.invoke('google-tasks:update-task', { 
-                                    tokens: googleTokens, 
-                                    taskId: t.googleTaskId, 
-                                    listId: t.googleListId || googleListId, 
-                                    completed: true 
-                                });
-                            } catch (e) { console.error('Failed to sync bulk completion to Google:', e); }
-                        }
                     }
                     // Recursively check children
                     if (t.children && t.children.length > 0) {
@@ -3121,18 +3028,6 @@ export default function App() {
                 return list.map(t => {
                     // Soft Delete Selected: Mark as complete
                     if (selectedTaskIds.has(t.id)) {
-                        // Sync to Google if it's a synced task
-                        if (t.isGoogleSynced && t.googleTaskId && !t.isCompleted) {
-                            try {
-                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                if (ipc) ipc.invoke('google-tasks:update-task', { 
-                                    tokens: googleTokens, 
-                                    taskId: t.googleTaskId, 
-                                    listId: t.googleListId || googleListId, 
-                                    completed: true 
-                                });
-                            } catch (e) { console.error('Failed to sync deletion completion to Google:', e); }
-                        }
                         return {
                             ...t,
                             isCompleted: true,
@@ -3273,7 +3168,6 @@ export default function App() {
                                     dir={task.title ? 'auto' : 'rtl'}
                                     placeholder={isSubTask ? "مهمة فرعية جديدة" : "مهمة جديدة"}
                                     onClick={(e) => e.stopPropagation()}
-                                    dangerouslySetInnerHTML={{ __html: inlineEditText }}
                                 />
                             ) : (
                                 <span 
@@ -4415,6 +4309,10 @@ export default function App() {
                                                         <button 
                                                             onClick={() => {
                                                                 setGoogleTokens(null);
+                                                                googleContextRef.current = '';
+                                                                googleAccountRef.current = '';
+                                                                initialSyncDone.current = false;
+                                                                setGoogleSyncError('');
                                                                 localStorage.removeItem('injaz_google_tokens');
                                                                 setNotification({ message: 'تم فصل الحساب.', type: 'success' });
                                                             }}
@@ -4437,6 +4335,10 @@ export default function App() {
                                                         <span>تحديث يدوي الآن</span>
                                                     </button>
 
+                                                    {googleSyncError && <p role="alert" className="text-xs text-red-700 bg-red-50 p-2 rounded-lg">{googleSyncError}</p>}
+                                                    {flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' && (t.googleSyncPending || !t.googleTaskId) && t.title.trim()) && (
+                                                        <p className="text-xs text-amber-700">توجد تغييرات محفوظة على الجهاز تنتظر المزامنة مع جوجل.</p>
+                                                    )}
                                                     {/* List Selection UI - Toggle style */}
                                                     <div className="pt-3 border-t border-gray-100">
                                                         <button 
@@ -4786,7 +4688,6 @@ export default function App() {
                                                                                 onInput={(e) => setInlineEditText(e.currentTarget.textContent || '')}
                                                                                 autoFocus
                                                                                 onClick={(e) => e.stopPropagation()}
-                                                                                dangerouslySetInnerHTML={{ __html: inlineEditText }}
                                                                             />
                                                                         ) : (
                                                                             <span
@@ -5037,7 +4938,6 @@ export default function App() {
                                                                                                         onClick={e => e.stopPropagation()}
                                                                                                         dir={task.title ? 'auto' : 'rtl'}
                                                                                                         placeholder="مهمة جديدة"
-                                                                                                        dangerouslySetInnerHTML={{ __html: task.title }}
                                                                                                     />
                                                                                                 ) : (
                                                                                                     <div className="flex items-start gap-1">
@@ -5146,7 +5046,6 @@ export default function App() {
                                                                                                                         className="flex-1 text-xs bg-transparent border-b border-indigo-400 outline-none text-gray-600 min-w-0 min-h-[1.5em] pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed"
                                                                                                                         onClick={e => e.stopPropagation()}
                                                                                                                         placeholder="مهمة فرعية جديدة"
-                                                                                                                        dangerouslySetInnerHTML={{ __html: child.title }}
                                                                                                                     />
                                                                                                                 ) : (
                                                                                                                     <span dir="auto" className={`flex-1 text-xs leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${child.isCompleted ? 'line-through text-gray-300' : 'text-gray-500'}`}>
