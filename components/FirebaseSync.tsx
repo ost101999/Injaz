@@ -92,7 +92,17 @@ export function useFirebaseSync(snapshot: Snapshot, apply: (expected: Snapshot, 
                 getBaseline: () => { const raw = localStorage.getItem(BASELINE); return raw ? JSON.parse(raw) : null; },
                 applyLocal: (expected: Snapshot, next: Snapshot) => applyRef.current(expected, next),
                 saveBaseline: (value: Snapshot) => localStorage.setItem(BASELINE, JSON.stringify(value)),
-                review
+                // Firebase is the source of truth when this device and the
+                // cloud both changed the same section. Preserve the local
+                // copy in the recovery archive, but never interrupt the user
+                // with a repeated choice dialog.
+                conflictPolicy: 'remote',
+                archiveConflict: ({ local, remote, conflicts }: { local: Snapshot; remote: Snapshot; conflicts: string[] }) => {
+                    const archive = JSON.parse(localStorage.getItem(ARCHIVE) || '[]');
+                    const choices = Object.fromEntries(conflicts.map(field => [field, 'remote']));
+                    archive.push({ at: Date.now(), local, remote, choices });
+                    localStorage.setItem(ARCHIVE, JSON.stringify(archive));
+                }
             });
             if (generation.current !== attempt) return;
             if (result.status === 'conflict') {

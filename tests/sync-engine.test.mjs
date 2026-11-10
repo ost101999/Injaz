@@ -34,6 +34,21 @@ test('concurrent edits require review and do not write', async () => {
     assert.equal(retry.status, 'conflict');
     assert.equal(f.result().writes, 0);
 });
+test('the remote conflict policy keeps Firebase authoritative and archives the local copy', async () => {
+    const f = fixture(snapshot(['local']), snapshot(['old']), snapshot(['remote']));
+    const archives = [];
+    const result = await syncOnce({
+        ...f.options,
+        conflictPolicy: 'remote',
+        archiveConflict: archive => archives.push(archive)
+    });
+    assert.equal(result.status, 'ok');
+    assert.deepEqual(f.result().current.tasks, ['remote']);
+    assert.deepEqual(f.result().saved.tasks, ['remote']);
+    assert.equal(f.result().writes, 0);
+    assert.deepEqual(archives[0].conflicts, ['tasks']);
+    assert.deepEqual(archives[0].local.tasks, ['local']);
+});
 test('a local edit during a read is not overwritten', async () => {
     const f = fixture(snapshot(['old']), snapshot(['old']), snapshot(['remote']));
     const read = f.options.transport.read;
