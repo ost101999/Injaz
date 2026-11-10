@@ -5,6 +5,17 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $root 'node_modules\.bin\concurrently.cmd'))) {
         throw 'Dependencies are missing. Open a terminal in the project folder and run npm install.'
     }
+    $electronExe = Join-Path $root 'node_modules\electron\dist\electron.exe'
+    $sharedProfile = Join-Path $env:APPDATA 'injaz---advanced-task-manager'
+    $existingPreview = Get-CimInstance Win32_Process -Filter "Name='electron.exe'" | Where-Object {
+        $_.ExecutablePath -eq $electronExe -and $_.CommandLine -like "*$sharedProfile*"
+    } | Select-Object -First 1
+    if ($existingPreview) {
+        Write-Host 'Developer mode is already running. Bringing its window to the front.' -ForegroundColor Cyan
+        $env:INJAZ_SHARED_PREVIEW = '1'
+        & $electronExe $root
+        exit 0
+    }
     $installed = @(Get-Process -Name 'injaz---advanced-task-manager' -ErrorAction SilentlyContinue)
     if ($installed.Count -gt 0) {
         # A normal window close only hides the installed app in the tray.
