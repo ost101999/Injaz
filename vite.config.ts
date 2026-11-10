@@ -6,6 +6,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     base: './',
+    // Keep the previous preview files available while a watched build runs.
+    build: { emptyOutDir: process.env.INJAZ_SHARED_PREVIEW === '1' ? false : undefined },
     server: {
       port: 3000,
       host: '0.0.0.0',

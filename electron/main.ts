@@ -11,8 +11,11 @@ if (require('electron-squirrel-startup')) {
     app.quit();
 }
 
-// In dev mode, share the same userData as the installed app so tasks/lists are identical
-if (!app.isPackaged) {
+// The shared preview must use both the installed profile and its file:// origin.
+const sharedPreview = !app.isPackaged && process.env.INJAZ_SHARED_PREVIEW === '1';
+if (sharedPreview) {
+    app.setPath('userData', path.join(app.getPath('appData'), 'injaz---advanced-task-manager'));
+} else if (!app.isPackaged) {
     app.setPath('userData', path.join(app.getPath('appData'), 'Injaz'));
 }
 
@@ -148,7 +151,7 @@ function createMainWindow() {
     registerWindowQuitShortcut(mainWindow);
 
     // Load the Vite dev server URL or local file
-    if (isDev) {
+    if (isDev && !sharedPreview) {
         mainWindow.loadURL('http://localhost:4000');
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -204,7 +207,7 @@ function createQuickAddWindow() {
     });
     registerWindowQuitShortcut(win);
 
-    if (isDev) {
+    if (isDev && !sharedPreview) {
         win.loadURL('http://localhost:4000/#/quick-add');
     } else {
         win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'quick-add' });
@@ -307,6 +310,19 @@ if (!gotTheLock) {
         // Only in non-packaged mode to avoid production apps connecting to localhost
         if (!isDev && !app.isPackaged) isDev = await checkDevServer();
         createMainWindow();
+        if (sharedPreview) {
+            // Vite writes index.html last; reload once each watched build finishes.
+            let reloadTimer: NodeJS.Timeout | undefined;
+            fs.watch(path.join(__dirname, '../dist'), (_event, filename) => {
+                if (filename?.toString() !== 'index.html') return;
+                clearTimeout(reloadTimer);
+                reloadTimer = setTimeout(() => {
+                    for (const win of BrowserWindow.getAllWindows()) {
+                        if (!win.isDestroyed()) win.reload();
+                    }
+                }, 500);
+            });
+        }
         // Quick Note window is created on demand (not at startup)
         createTray();
 
