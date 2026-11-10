@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
-import { flattenTasks, markGoogleChanges, acknowledgeGoogleWrite, mergeGoogleTasks, uploadGoogleChanges } from '../google/sync.mjs';
+import { flattenTasks, markGoogleChanges, acknowledgeGoogleWrite, mergeGoogleTasks, uploadGoogleChanges, googleListFolderId } from '../google/sync.mjs';
 
 const task = (extra = {}) => ({ id: 'local', title: 'New task', type: 'item', children: [], isCompleted: false, parentId: 'google_main_folder', ...extra });
 const folder = children => task({ id: 'google_main_folder', title: 'مهام جوجل', type: 'folder', isGoogleSynced: true, parentId: null, children });
@@ -46,9 +46,46 @@ test('late acknowledgement does not clear a newer edit, and IDs stay stable', ()
 
 test('identical task IDs in different Google lists remain separate', () => {
     const result = mergeGoogleTasks([], [remote(), remote({ listId: 'other' })], 'default');
-    const children = result[0].children;
+    const children = result.flatMap(folder => folder.children);
     assert.equal(children.length, 2);
     assert.notEqual(children[0].id, children[1].id);
+});
+
+test('Google lists become separate named groups with tasks and subtasks in the right list', () => {
+    const lists = [{ id: 'home', title: 'ToDo(Home)' }, { id: 'out', title: 'ToDo(Out)' }];
+    const result = mergeGoogleTasks([], [
+        remote({ id: 'home-task', listId: 'home' }),
+        remote({ id: 'home-subtask', listId: 'home', parent: 'home-task' }),
+        remote({ id: 'out-task', listId: 'out' })
+    ], 'default', lists);
+    assert.deepEqual(result.map(t => t.title), ['ToDo(Home)', 'ToDo(Out)']);
+    assert.ok(result.every(t => t.isGoogleListFolder));
+    assert.equal(result[0].children[0].googleTaskId, 'home-task');
+    assert.equal(result[0].children[0].children[0].googleTaskId, 'home-subtask');
+    assert.equal(result[1].children[0].googleTaskId, 'out-task');
+    const withDraft = markGoogleChanges(result, result.map(t => t.googleListId === 'out' ? {
+        ...t, children: [...t.children, task({ id: 'out-draft', parentId: t.id })]
+    } : t), 'home');
+    assert.equal(find(withDraft, 'out-draft').googleListId, 'out');
+});
+
+test('migrating the old combined folder preserves IDs, drafts and pending changes in their lists', () => {
+    const previous = [folder([
+        local({ googleListId: 'home', googleSyncPending: true, title: 'Pending edit' }),
+        task({ id: 'draft', googleListId: 'out', googleSyncPending: true })
+    ])];
+    const lists = [{ id: 'home', title: 'Home' }, { id: 'out', title: 'Out' }];
+    const result = mergeGoogleTasks(previous, [remote({ listId: 'home' })], 'default', lists);
+    assert.equal(find(result).id, 'local');
+    assert.equal(find(result).title, 'Pending edit');
+    assert.equal(find(result).parentId, googleListFolderId('home'));
+    assert.equal(find(result, 'draft').parentId, googleListFolderId('out'));
+    assert.ok(!find(result, 'google_main_folder'));
+    const renamed = mergeGoogleTasks(result, [remote({ listId: 'home' })], 'default', [{ id: 'home', title: 'Renamed Home' }, lists[1]]);
+    assert.equal(renamed[0].id, result[0].id);
+    assert.equal(renamed[0].title, 'Renamed Home');
+    assert.equal(find(renamed, 'draft').googleListId, 'out');
+    assert.equal(flattenTasks(renamed).filter(t => t.id === 'draft').length, 1);
 });
 
 test('successful empty snapshot removes clean deleted tasks but preserves unrelated local data', () => {

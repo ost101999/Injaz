@@ -114,7 +114,7 @@ const assert = require('node:assert/strict');
 
         // Group titles update presentation state on each input. Literal '<...>'
         // must stay text, and editing in the middle must not jump to the end.
-        await editTitle('مهام جوجل');
+        await editTitle('List');
         await page.click(editor);
         await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control');
         await page.keyboard.type('Group <b> & text', { delay: 15 });

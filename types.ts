@@ -30,6 +30,7 @@ export interface Task {
   listId?: string; // Links root tasks to a specific list
   googleTaskId?: string; // Links to Google Tasks API ID
   googleListId?: string; // Stores which Google list this task belongs to
+  isGoogleListFolder?: boolean;
   isGoogleSynced?: boolean;
   googleSyncPending?: boolean; // Persist unsent changes across restarts.
   googleSyncRevision?: number;
