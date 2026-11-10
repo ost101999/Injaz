@@ -92,7 +92,15 @@ try {
     }
     Remove-SafeDirectory $backup
     Write-Host "`nBuild completed. The new installer is in: $output" -ForegroundColor Green
-    if (-not $env:INJAZ_NO_OPEN) { Invoke-Item -LiteralPath $output }
+    if (-not $env:INJAZ_NO_OPEN) {
+        $installerPath = Join-Path $output $installer[0].Name
+        Write-Host 'Starting the new installer...' -ForegroundColor Cyan
+        $installProcess = Start-Process -FilePath $installerPath -PassThru -Wait
+        if ($installProcess.ExitCode -ne 0) {
+            throw "Build succeeded, but the installer exited with code $($installProcess.ExitCode). Installer: $installerPath"
+        }
+        Write-Host 'Installation completed.' -ForegroundColor Green
+    }
     if (-not $env:INJAZ_NONINTERACTIVE) { Read-Host 'Press Enter to close' | Out-Null }
 } catch {
     Write-Host "`n$($_.Exception.Message)" -ForegroundColor Red
