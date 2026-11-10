@@ -119,26 +119,79 @@ function isVersionNewer(candidate: string, current: string) {
     return false;
 }
 
+async function fetchLatestReleaseCandidate(headers: Record<string, string>): Promise<{ version: string; url: string } | null> {
+    try {
+        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/releases/latest', {
+            headers,
+            signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok) return null;
+        const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
+        if (typeof release.tag_name !== 'string') return null;
+        const url = typeof release.html_url === 'string' && release.html_url.startsWith('https://github.com/ost101999/Injaz/releases/')
+            ? release.html_url
+            : 'https://github.com/ost101999/Injaz/releases/latest';
+        return { version: release.tag_name.replace(/^v/i, ''), url };
+    } catch {
+        return null;
+    }
+}
+
+async function fetchMainBranchCommitCandidate(headers: Record<string, string>): Promise<{ version: string; url: string } | null> {
+    try {
+        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/commits?sha=main&per_page=1', {
+            headers,
+            signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok) return null;
+        const linkHeader = response.headers.get('link') || '';
+        const lastPageMatch = linkHeader.match(/[?&]page=(\d+)>;\s*rel="last"/i);
+        let commitCount = lastPageMatch ? Number.parseInt(lastPageMatch[1], 10) : 0;
+        if (!commitCount) {
+            const commits = await response.json() as unknown[];
+            commitCount = Array.isArray(commits) ? commits.length : 0;
+        }
+        if (!Number.isFinite(commitCount) || commitCount <= 0) return null;
+        const baseParts = getCurrentAppVersion().split('.');
+        const major = Number.parseInt(baseParts[0], 10) || 0;
+        const minor = Number.parseInt(baseParts[1], 10) || 0;
+        return {
+            version: `${major}.${minor}.${commitCount}`,
+            url: 'https://github.com/ost101999/Injaz/commits/main'
+        };
+    } catch {
+        return null;
+    }
+}
+
 async function checkForUpdates() {
     if (updateCheckInProgress) return;
 
     updateCheckInProgress = true;
     mainWindow?.webContents.send('checking_for_update');
     try {
-        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/releases/latest', {
-            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Injaz-Task-Manager' },
-            signal: AbortSignal.timeout(15000)
-        });
-        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
-        const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
-        if (typeof release.tag_name !== 'string') throw new Error('Release version is missing');
-        if (typeof release.html_url === 'string' && release.html_url.startsWith('https://github.com/ost101999/Injaz/releases/')) {
-            latestReleaseUrl = release.html_url;
+        const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Injaz-Task-Manager' };
+        const [releaseCandidate, branchCandidate] = await Promise.all([
+            fetchLatestReleaseCandidate(headers),
+            fetchMainBranchCommitCandidate(headers)
+        ]);
+
+        let bestCandidate = releaseCandidate;
+        if (branchCandidate && (!bestCandidate || isVersionNewer(branchCandidate.version, bestCandidate.version))) {
+            bestCandidate = branchCandidate;
         }
-        if (isVersionNewer(release.tag_name, getCurrentAppVersion())) {
-            mainWindow?.webContents.send('update_available', { version: release.tag_name.replace(/^v/i, '') });
+
+        if (!bestCandidate) {
+            throw new Error('Could not resolve latest version from GitHub');
+        }
+
+        latestReleaseUrl = bestCandidate.url;
+        const currentVersion = getCurrentAppVersion();
+
+        if (isVersionNewer(bestCandidate.version, currentVersion)) {
+            mainWindow?.webContents.send('update_available', { version: bestCandidate.version });
         } else {
-            mainWindow?.webContents.send('update_not_available', { version: release.tag_name.replace(/^v/i, '') });
+            mainWindow?.webContents.send('update_not_available', { version: bestCandidate.version });
         }
     } catch {
         mainWindow?.webContents.send('update_error', 'تعذّر الاتصال بصفحة الإصدارات. تحقق من الإنترنت وحاول مرة أخرى.');

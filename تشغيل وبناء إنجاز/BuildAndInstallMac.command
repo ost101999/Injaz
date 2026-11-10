@@ -18,6 +18,10 @@ if [[ -e "$stage_app" || -e "$old_app" ]]; then
 fi
 
 cd "$project_dir"
+if [[ -z "$(git status --porcelain 2>/dev/null)" ]]; then
+  echo "Checking for latest commits from GitHub..."
+  git pull --ff-only || true
+fi
 npm run dist
 
 if [[ ! -d "$source_app" ]]; then
