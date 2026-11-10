@@ -64,7 +64,7 @@ try {
             # Native stderr must be captured without turning it into a terminating
             # PowerShell error; the native exit code is checked explicitly below.
             $ErrorActionPreference = 'Continue'
-            & $builder --win --publish never "--config.directories.output=$stage" 2>&1 | Tee-Object -Variable builderLog
+            & node (Join-Path $root 'electron\build-with-version.cjs') --win --publish never "--config.directories.output=$stage" 2>&1 | Tee-Object -Variable builderLog
             $builderExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorAction
