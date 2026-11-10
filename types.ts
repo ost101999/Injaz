@@ -31,6 +31,8 @@ export interface Task {
   googleTaskId?: string; // Links to Google Tasks API ID
   googleListId?: string; // Stores which Google list this task belongs to
   isGoogleSynced?: boolean;
+  googleSyncPending?: boolean; // Persist unsent changes across restarts.
+  googleSyncRevision?: number;
   isArchived?: boolean;
   children: Task[]; // Recursive structure
   isCompleted: boolean;
