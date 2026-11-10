@@ -29,30 +29,37 @@ interface AppPreferences {
 
 export default function App() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
-    const [updateDownloaded, setUpdateDownloaded] = useState(false);
-    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'>('idle');
+    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'error'>('idle');
     const [updateErrorMsg, setUpdateErrorMsg] = useState('');
+    const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+    const [latestVersion, setLatestVersion] = useState<string | null>(null);
+    const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
+
+    const checkForUpdates = () => {
+        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+        if (!ipc) {
+            setUpdateStatus('error');
+            setUpdateErrorMsg('فحص التحديثات متاح في تطبيق سطح المكتب فقط');
+            return;
+        }
+        setUpdateStatus('checking');
+        setUpdateErrorMsg('');
+        ipc.send('check-for-updates');
+    };
 
     const handleBellClick = () => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         
-        if (updateAvailable && updateStatus !== 'downloaded' && updateStatus !== 'downloading') {
-            if (confirm('هل تود تنزيل التحديث الجديد؟')) {
-                setUpdateStatus('downloading');
-                ipc?.send('download_update');
+        if (updateAvailable) {
+            if (confirm('سيتم فتح صفحة الإصدار لتنزيل النسخة المناسبة لجهازك. هل تريد المتابعة؟')) {
+                ipc?.send('open-update-page');
             }
-        } else if (updateDownloaded || updateStatus === 'downloaded') {
-            if (confirm('تم تحميل التحديث بنجاح! هل تريد إعادة التشغيل للتثبيت الآن؟')) {
-                ipc?.send('quit-and-install');
-            }
-        } else if (updateStatus === 'downloading') {
-            alert('جاري تحميل التحديث بالفعل في الخلفية...');
         } else if (updateStatus === 'error') {
             alert('حدث خطأ أثناء التحديث: ' + updateErrorMsg);
         } else if (updateStatus === 'checking') {
             alert('جاري البحث عن تحديثات...');
         } else {
-            alert('أنت على أحدث إصدار بالفعل!');
+            checkForUpdates();
         }
     };
 
@@ -463,30 +470,34 @@ export default function App() {
     useEffect(() => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         if (ipc) {
+            void ipc.invoke('app-version').then((info: { version: string }) => setCurrentVersion(info.version)).catch(() => undefined);
             ipc.on('checking_for_update', () => {
                 setUpdateStatus('checking');
             });
-            ipc.on('update_available', () => {
+            ipc.on('update_available', (_event: any, info?: { version?: string }) => {
                 setUpdateAvailable(true);
                 setUpdateStatus('available');
+                setLatestVersion(info?.version || null);
+                setLastUpdateCheck(Date.now());
             });
-            ipc.on('update_not_available', () => {
-                setUpdateStatus('idle');
-            });
-            ipc.on('update_downloaded', () => {
-                setUpdateDownloaded(true);
-                setUpdateStatus('downloaded');
+            ipc.on('update_not_available', (_event: any, info?: { version?: string }) => {
+                setUpdateAvailable(false);
+                setUpdateStatus('up-to-date');
+                setLatestVersion(info?.version || null);
+                setLastUpdateCheck(Date.now());
             });
             ipc.on('update_error', (event: any, error: any) => {
                 setUpdateStatus('error');
                 setUpdateErrorMsg(error);
+                setLastUpdateCheck(Date.now());
                 console.error('Update error:', error);
             });
+            // Run one check only after the renderer is listening for its result.
+            ipc.send('check-for-updates');
             return () => {
                 ipc.removeAllListeners('checking_for_update');
                 ipc.removeAllListeners('update_available');
                 ipc.removeAllListeners('update_not_available');
-                ipc.removeAllListeners('update_downloaded');
                 ipc.removeAllListeners('update_error');
             };
         }
@@ -4393,6 +4404,40 @@ export default function App() {
                                             {/* Divider */}
                                             <div className="my-4 border-t border-gray-100"></div>
 
+                                            <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-3 shadow-sm" dir="rtl">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-gray-700">إصدار التطبيق</h4>
+                                                        <p className="text-xs text-gray-500 mt-1">
+                                                            النسخة المثبّتة: {currentVersion ? `v${currentVersion}` : 'جارٍ التعرّف على النسخة…'}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={checkForUpdates}
+                                                        disabled={updateStatus === 'checking'}
+                                                        className="px-3 py-2 bg-indigo-600 disabled:opacity-50 text-white rounded text-sm"
+                                                    >
+                                                        {updateStatus === 'checking' ? 'جارٍ الفحص…' : 'فحص التحديثات الآن'}
+                                                    </button>
+                                                </div>
+                                                <p className={`text-xs ${updateStatus === 'error' ? 'text-red-600' : updateStatus === 'available' ? 'text-amber-700' : 'text-gray-600'}`}>
+                                                    {updateStatus === 'checking' && 'جارٍ مقارنة نسختك بآخر إصدار منشور…'}
+                                                    {updateStatus === 'up-to-date' && (latestVersion && currentVersion && latestVersion !== currentVersion
+                                                        ? `نسخة هذا الجهاز (v${currentVersion}) أحدث من آخر إصدار منشور (v${latestVersion}).`
+                                                        : `أنت تستخدم أحدث إصدار${latestVersion ? ` (v${latestVersion})` : ''}.`)}
+                                                    {updateStatus === 'available' && `يوجد إصدار أحدث${latestVersion ? `: v${latestVersion}` : ''}.`}
+                                                    {updateStatus === 'error' && `تعذّر فحص التحديثات: ${updateErrorMsg}`}
+                                                    {updateStatus === 'idle' && 'تحقق يدويًا متى أردت معرفة ما إذا كان هذا الجهاز يحتاج تحديثًا.'}
+                                                </p>
+                                                {updateStatus === 'available' && (
+                                                    <button type="button" onClick={handleBellClick} className="px-3 py-2 border border-indigo-200 text-indigo-700 rounded text-sm font-bold">
+                                                        تنزيل الإصدار {latestVersion ? `v${latestVersion}` : 'الجديد'}
+                                                    </button>
+                                                )}
+                                                {lastUpdateCheck && <p className="text-[11px] text-gray-400">آخر فحص: {new Date(lastUpdateCheck).toLocaleString('ar-EG')}</p>}
+                                            </div>
+
                                             <FirebaseSyncPanel sync={firebaseSync} />
 
                                             {/* Cloud File Sync */}
@@ -6096,7 +6141,7 @@ export default function App() {
 
             {/* Update Notification Banner */}
             {
-                (updateAvailable || updateDownloaded) && (
+                updateAvailable && (
                     <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
                         <div className="flex items-start gap-3">
                             <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
@@ -6104,30 +6149,18 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                                 <h3 className="text-sm font-bold text-gray-800">
-                                    {updateDownloaded ? 'التحديث جاهز للتثبيت!' : 'جاري تحميل تحديث جديد...'}
+                                    تحديث جديد متاح
                                 </h3>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {updateDownloaded ? 'تم تحميل التحديث بنجاح. أعد تشغيل التطبيق لتطبيقه.' : 'يتم تحميل التحديث في الخلفية.'}
+                                    يتوفر إصدار أحدث. افتح صفحة الإصدار لتنزيل النسخة المناسبة لجهازك.
                                 </p>
                                 <div className="mt-3 flex justify-end gap-2">
-                                    {!updateDownloaded && (
-                                        <button onClick={() => { setUpdateAvailable(false); setUpdateDownloaded(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
-                                            إغلاق
-                                        </button>
-                                    )}
-                                    {updateDownloaded && (
-                                        <>
-                                            <button onClick={() => { setUpdateAvailable(false); setUpdateDownloaded(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
-                                                لاحقاً
-                                            </button>
-                                            <button onClick={() => {
-                                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                                if (ipc) ipc.send('quit-and-install');
-                                            }} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
-                                                إعادة التشغيل
-                                            </button>
-                                        </>
-                                    )}
+                                    <button onClick={() => { setUpdateAvailable(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
+                                        إغلاق
+                                    </button>
+                                    <button onClick={handleBellClick} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
+                                        فتح صفحة التحديث
+                                    </button>
                                 </div>
                             </div>
                         </div>

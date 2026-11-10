@@ -1,10 +1,10 @@
 import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell, dialog, safeStorage } from 'electron';
+import { execFileSync } from 'child_process';
 import path from 'path';
 import * as fs from 'fs';
 import { google } from 'googleapis';
 import http from 'http';
 import url from 'url';
-import { autoUpdater } from 'electron-updater';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -24,6 +24,8 @@ const quickAddWindows = new Set<BrowserWindow>();
 let primaryQuickAddWindow: BrowserWindow | null = null; // Single persistent window for toggle
 let tray: Tray | null = null;
 let isQuitting = false;
+let updateCheckInProgress = false;
+let latestReleaseUrl = 'https://github.com/ost101999/Injaz/releases/latest';
 
 let wasMainWindowFullScreen = false;
 let wasMainWindowMaximized = false;
@@ -73,6 +75,76 @@ function showMainWindow() {
         mainWindow.maximize();
     }
     mainWindow.focus();
+}
+
+let cachedAppVersion: string | null = null;
+
+function getCurrentAppVersion(): string {
+    if (cachedAppVersion) return cachedAppVersion;
+    const baseVersion = app.getVersion();
+    if (app.isPackaged) {
+        cachedAppVersion = baseVersion;
+        return cachedAppVersion;
+    }
+    try {
+        const countOutput = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+            cwd: path.resolve(__dirname, '..'),
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        }).trim();
+        const commitCount = Number.parseInt(countOutput, 10);
+        if (Number.isFinite(commitCount) && commitCount > 0) {
+            const parts = baseVersion.split('.');
+            const major = Number.parseInt(parts[0], 10) || 0;
+            const minor = Number.parseInt(parts[1], 10) || 0;
+            cachedAppVersion = `${major}.${minor}.${commitCount}`;
+            return cachedAppVersion;
+        }
+    } catch {
+        // Fallback to package.json version if git is unavailable
+    }
+    cachedAppVersion = baseVersion;
+    return cachedAppVersion;
+}
+
+function isVersionNewer(candidate: string, current: string) {
+    const parts = (value: string) => value.replace(/^v/i, '').split(/[.-]/).map(part => Number.parseInt(part, 10) || 0);
+    const candidateParts = parts(candidate);
+    const currentParts = parts(current);
+    const count = Math.max(candidateParts.length, currentParts.length);
+    for (let index = 0; index < count; index++) {
+        const difference = (candidateParts[index] || 0) - (currentParts[index] || 0);
+        if (difference !== 0) return difference > 0;
+    }
+    return false;
+}
+
+async function checkForUpdates() {
+    if (updateCheckInProgress) return;
+
+    updateCheckInProgress = true;
+    mainWindow?.webContents.send('checking_for_update');
+    try {
+        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/releases/latest', {
+            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Injaz-Task-Manager' },
+            signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+        const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
+        if (typeof release.tag_name !== 'string') throw new Error('Release version is missing');
+        if (typeof release.html_url === 'string' && release.html_url.startsWith('https://github.com/ost101999/Injaz/releases/')) {
+            latestReleaseUrl = release.html_url;
+        }
+        if (isVersionNewer(release.tag_name, getCurrentAppVersion())) {
+            mainWindow?.webContents.send('update_available', { version: release.tag_name.replace(/^v/i, '') });
+        } else {
+            mainWindow?.webContents.send('update_not_available', { version: release.tag_name.replace(/^v/i, '') });
+        }
+    } catch {
+        mainWindow?.webContents.send('update_error', 'تعذّر الاتصال بصفحة الإصدارات. تحقق من الإنترنت وحاول مرة أخرى.');
+    } finally {
+        updateCheckInProgress = false;
+    }
 }
 
 let currentGlobalShortcut = 'Alt+Shift+W';
@@ -330,29 +402,9 @@ if (!gotTheLock) {
         // Quick Note window is created on demand (not at startup)
         createTray();
 
-        // Check for updates and notify user
-        autoUpdater.autoDownload = false;
-        autoUpdater.checkForUpdatesAndNotify();
-
-        autoUpdater.on('checking-for-update', () => {
-            mainWindow?.webContents.send('checking_for_update');
-        });
-
-        autoUpdater.on('update-available', () => {
-            mainWindow?.webContents.send('update_available');
-        });
-
-        autoUpdater.on('update-not-available', () => {
-            mainWindow?.webContents.send('update_not_available');
-        });
-
-        autoUpdater.on('update-downloaded', () => {
-            mainWindow?.webContents.send('update_downloaded');
-        });
-
-        autoUpdater.on('error', (err) => {
-            mainWindow?.webContents.send('update_error', err.message || err);
-        });
+        // Check GitHub Releases at startup. This works even when a release
+        // does not contain electron-updater's platform manifest files.
+        void checkForUpdates();
 
         registerGlobalShortcut(currentGlobalShortcut);
         registerAppToggleShortcut(currentAppToggleShortcut);
@@ -439,13 +491,19 @@ if (!gotTheLock) {
         quitApp();
     });
 
-    ipcMain.on('quit-and-install', () => {
-        autoUpdater.quitAndInstall();
+    ipcMain.on('open-update-page', () => {
+        void shell.openExternal(latestReleaseUrl);
     });
 
-    ipcMain.on('download_update', () => {
-        autoUpdater.downloadUpdate();
+    ipcMain.on('check-for-updates', () => {
+        checkForUpdates();
     });
+
+    ipcMain.handle('app-version', () => ({
+        version: getCurrentAppVersion(),
+        platform: process.platform,
+        isPackaged: app.isPackaged
+    }));
 
     ipcMain.on('maximize-window', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {

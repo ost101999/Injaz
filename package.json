@@ -10,9 +10,10 @@
     "compile:electron": "tsc -p tsconfig.electron.json",
     "electron": "wait-on tcp:4000 && cross-env NODE_ENV=development node electron/launch-electron.cjs .",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run compile:electron && npm run electron\"",
-    "dist": "npm run build && npm run compile:electron && electron-builder",
+    "version:current": "node electron/build-with-version.cjs --print-version",
+    "dist": "npm run build && npm run compile:electron && node electron/build-with-version.cjs --publish never",
     "dist:install:mac": "bash './تشغيل وبناء إنجاز/BuildAndInstallMac.command'",
-    "release": "npm run build && npm run compile:electron && electron-builder --publish always",
+    "release": "npm run build && npm run compile:electron && node electron/build-with-version.cjs --publish always",
     "electron:build": "npm run dist",
     "electron:run": "npm run compile:electron && electron ."
   },
