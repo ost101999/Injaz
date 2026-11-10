@@ -49,6 +49,11 @@ try {
             throw 'Build Output exists but is not marked as an Injaz build folder. Rename it and try again.'
         }
     }
+    Write-Host 'Checking for latest commits from GitHub...' -ForegroundColor Cyan
+    $gitStatus = (& git status --porcelain 2>$null | Out-String).Trim()
+    if ([string]::IsNullOrEmpty($gitStatus)) {
+        & git pull --ff-only 2>&1 | Out-Host
+    }
     Write-Host 'Building the application...' -ForegroundColor Cyan
     & npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed. The previous installer was kept.' }
