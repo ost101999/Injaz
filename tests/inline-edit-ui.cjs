@@ -80,6 +80,37 @@ const assert = require('node:assert/strict');
         assert.equal(await text(), 'Subtask draft survives');
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => !document.querySelector('[data-inline-edit]'));
+        await frame();
+        const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('injaz_tasks')));
+        const flatten = tasks => tasks.flatMap(t => [t, ...flatten(t.children || [])]);
+        const savedItems = flatten(saved).filter(t => t.type === 'item');
+        assert.equal(savedItems.filter(t => t.title === 'Fresh draft survives').length, 1, 'saving child must preserve parent title');
+        assert.equal(savedItems.filter(t => t.title === 'Subtask draft survives').length, 1, 'child text must be saved only once');
+        const occurrences = await page.evaluate(() => {
+            const text = document.body.textContent;
+            return {
+                parent: text.split('Fresh draft survives').length - 1,
+                original: text.split('Still Xtyping more').length - 1,
+                child: text.split('Subtask draft survives').length - 1
+            };
+        });
+        assert.equal(occurrences.parent, 1, 'committed draft must be displayed only once');
+        assert.equal(occurrences.original, 1, 'existing title must be displayed only once after editing');
+        assert.equal(occurrences.child, 1, 'subtask must be displayed only once');
+        let previousTitle = 'Still Xtyping more';
+        for (let i = 1; i <= 3; i++) {
+            await editTitle(previousTitle);
+            await page.click(editor);
+            await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control');
+            const nextTitle = `Renamed task ${i}`;
+            await page.keyboard.type(nextTitle);
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(() => !document.querySelector('[data-inline-edit]'));
+            await frame();
+            assert.equal(await page.evaluate(title => document.body.textContent.split(title).length - 1, nextTitle), 1,
+                'repeated edits must replace the editor without leaving stale text');
+            previousTitle = nextTitle;
+        }
 
         // Group titles update presentation state on each input. Literal '<...>'
         // must stay text, and editing in the middle must not jump to the end.

@@ -3148,6 +3148,7 @@ export default function App() {
 
                             {isEditing ? (
                                 <div
+                                    key={`inline-editor-${task.id}`}
                                     ref={inlineEditRef as any}
                                     data-inline-edit
                                     contentEditable
@@ -3333,6 +3334,7 @@ export default function App() {
                             >
                                 {isEditing ? (
                                     <div
+                                        key={`inline-editor-${task.id}`}
                                         ref={inlineEditRef}
                                         data-inline-edit
                                         contentEditable
@@ -4648,6 +4650,7 @@ export default function App() {
                                                                         />
                                                                         {inlineEditingId === col.id ? (
                                                                             <div
+                                                                                key={`inline-editor-${col.id}`}
                                                                                 ref={inlineEditRef as any}
                                                                                 data-inline-edit
                                                                                 contentEditable
@@ -4847,6 +4850,7 @@ export default function App() {
                                                                                             <div className="flex-1 min-w-0">
                                                                                                 {inlineEditingId === task.id ? (
                                                                                                     <div
+                                                                                                        key={`inline-editor-${task.id}`}
                                                                                                         ref={inlineEditRef as any}
                                                                                                         data-inline-edit
                                                                                                         autoFocus
@@ -5005,6 +5009,7 @@ export default function App() {
                                                                                                                 </button>
                                                                                                                 {inlineEditingId === child.id ? (
                                                                                                                     <div
+                                                                                                                        key={`inline-editor-${child.id}`}
                                                                                                                         ref={inlineEditRef as any}
                                                                                                                         data-inline-edit
                                                                                                                         autoFocus
