@@ -54,9 +54,30 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed. The previous installer was kept.' }
     & npm.cmd run compile:electron
     if ($LASTEXITCODE -ne 0) { throw 'Electron compilation failed. The previous installer was kept.' }
-    New-Item -ItemType Directory -Path $stage | Out-Null
-    & $builder --win --publish never "--config.directories.output=$stage"
-    if ($LASTEXITCODE -ne 0) { throw 'Installer build failed. The previous installer was kept.' }
+    $attempt = 0
+    do {
+        $attempt++
+        New-Item -ItemType Directory -Path $stage | Out-Null
+        $builderLog = @()
+        $previousErrorAction = $ErrorActionPreference
+        try {
+            # Native stderr must be captured without turning it into a terminating
+            # PowerShell error; the native exit code is checked explicitly below.
+            $ErrorActionPreference = 'Continue'
+            & $builder --win --publish never "--config.directories.output=$stage" 2>&1 | Tee-Object -Variable builderLog
+            $builderExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorAction
+        }
+        if ($builderExitCode -eq 0) { break }
+        $logText = ($builderLog | Out-String)
+        if ($attempt -ge 3 -or $logText -notmatch 'spawn EPERM' -or $logText -notmatch 'computeScriptAndSignUninstaller') {
+            throw 'Installer build failed. The previous installer was kept.'
+        }
+        Write-Host "`nWindows temporarily refused to start the installer tool. Retrying ($attempt of 2)..." -ForegroundColor Yellow
+        Remove-SafeDirectory $stage
+        Start-Sleep -Seconds (3 * $attempt)
+    } while ($true)
     $installer = @(Get-ChildItem -LiteralPath $stage -File -Filter '*Setup*.exe')
     if ($installer.Count -ne 1) { throw 'Expected installer was not found. The previous installer was kept.' }
     Set-Content -LiteralPath (Join-Path $stage $marker) -Value 'Generated Injaz build output.' -Encoding ASCII
