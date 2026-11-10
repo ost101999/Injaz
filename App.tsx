@@ -5,6 +5,7 @@ import { Icons } from './components/Icons';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
+import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -759,6 +760,37 @@ export default function App() {
     useEffect(() => {
         localStorage.setItem('injaz_habits', JSON.stringify(habits));
     }, [habits]);
+
+    const firebaseSnapshot = { lists, tasks, habits, preferences };
+    const firebaseSnapshotRef = useRef(firebaseSnapshot);
+    firebaseSnapshotRef.current = firebaseSnapshot;
+    const firebaseSync = useFirebaseSync(firebaseSnapshot, (expected, next) => {
+        if (JSON.stringify(firebaseSnapshotRef.current) !== JSON.stringify(expected)) return false;
+        const fields = ['lists', 'tasks', 'habits', 'preferences'] as const;
+        const previous: Record<string, string | null> = {};
+        for (const field of fields) {
+            const raw = localStorage.getItem(`injaz_${field}`);
+            if (raw === null || JSON.stringify(JSON.parse(raw)) !== JSON.stringify(expected[field])) return false;
+            previous[field] = raw;
+        }
+        try {
+            for (const field of fields) localStorage.setItem(`injaz_${field}`, JSON.stringify(next[field]));
+        } catch (error) {
+            for (const field of fields) {
+                const raw = previous[field];
+                if (raw === null) localStorage.removeItem(`injaz_${field}`); else localStorage.setItem(`injaz_${field}`, raw);
+            }
+            throw error;
+        }
+        flushSync(() => {
+            setLists(next.lists); setTasks(next.tasks); setHabits(next.habits); setPreferences(next.preferences);
+            tasksRef.current = next.tasks; habitsRef.current = next.habits;
+        });
+        return true;
+    }, () => {
+        localStorage.setItem('injaz_cloud_sync_enabled', 'false');
+        flushSync(() => setIsCloudSyncEnabled(false));
+    });
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -4447,6 +4479,8 @@ export default function App() {
                                             {/* Divider */}
                                             <div className="my-4 border-t border-gray-100"></div>
 
+                                            <FirebaseSyncPanel sync={firebaseSync} />
+
                                             {/* Cloud File Sync */}
                                             <div>
                                                 <h4 className="text-[13px] text-gray-500 font-bold mb-3">المزامنة السحابية الذكية (Smart Cloud Sync)</h4>
@@ -4460,6 +4494,7 @@ export default function App() {
                                                             <input 
                                                                 type="checkbox" 
                                                                 checked={isCloudSyncEnabled}
+                                                                disabled={firebaseSync.connected}
                                                                 onChange={(e) => {
                                                                     const enabled = e.target.checked;
                                                                     if (enabled && !syncFilePath) {
