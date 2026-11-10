@@ -102,11 +102,30 @@ export function mergeGoogleTasks(previous, remote, targetListId, googleLists = [
             folder.children.push(node);
         }
     }
+    // Keep locally chosen sibling order; Google does not store Injaz's
+    // group priorities or its custom ordering. New items follow existing ones.
+    for (const parent of [...listFolders.values(), ...nodes.values()]) {
+        const previousParent = allLocal.find(task => task.id === parent.id);
+        const order = new Map((previousParent?.children || []).map((task, index) => [task.id, index]));
+        parent.children.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
     function removeLinked(tasks) {
         return tasks.filter(t => t.id !== GOOGLE_FOLDER_ID && !t.isGoogleSynced)
             .map(t => ({ ...t, children: removeLinked(t.children || []) }));
     }
-    return [...removeLinked(previous), ...listFolders.values()];
+    const remainingLocal = new Map(removeLinked(previous).map(task => [task.id, task]));
+    const remainingFolders = new Map(listFolders);
+    const result = [];
+    for (const task of previous) {
+        if (task.isGoogleListFolder && remainingFolders.has(task.googleListId)) {
+            result.push(remainingFolders.get(task.googleListId));
+            remainingFolders.delete(task.googleListId);
+        } else if (remainingLocal.has(task.id)) {
+            result.push(remainingLocal.get(task.id));
+            remainingLocal.delete(task.id);
+        }
+    }
+    return [...result, ...remainingLocal.values(), ...remainingFolders.values()];
 }
 
 // Upload parents before children. Read the latest state after each acknowledgement

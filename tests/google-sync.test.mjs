@@ -69,6 +69,25 @@ test('Google lists become separate named groups with tasks and subtasks in the r
     assert.equal(find(withDraft, 'out-draft').googleListId, 'out');
 });
 
+test('Google refresh preserves local group positions, priorities and sibling order', () => {
+    const lists = [{ id: 'home', title: 'Home' }, { id: 'out', title: 'Out' }];
+    const remoteTasks = [remote({ id: 'a', listId: 'home' }), remote({ id: 'b', listId: 'home' }), remote({ id: 'c', listId: 'out' })];
+    const initial = mergeGoogleTasks([], remoteTasks, 'default', lists);
+    const home = { ...initial[0], priority: 1, children: [...initial[0].children].reverse() };
+    const out = { ...initial[1], priority: 3 };
+    const other = task({ id: 'other', parentId: null, isGoogleSynced: false });
+    const reordered = [out, other, home];
+    const refreshed = mergeGoogleTasks(reordered, [...remoteTasks, remote({ id: 'new', listId: 'home' })], 'default', lists);
+    assert.deepEqual(refreshed.map(t => t.id), [out.id, other.id, home.id]);
+    assert.equal(refreshed[0].priority, 3);
+    assert.equal(refreshed[2].priority, 1);
+    assert.deepEqual(refreshed[2].children.map(t => t.googleTaskId), ['b', 'a', 'new']);
+    const again = mergeGoogleTasks(JSON.parse(JSON.stringify(refreshed)), remoteTasks, 'default', lists);
+    assert.deepEqual(again.map(t => t.id), [out.id, other.id, home.id]);
+    assert.equal(again[2].priority, 1);
+    assert.deepEqual(again[2].children.map(t => t.googleTaskId), ['b', 'a']);
+});
+
 test('migrating the old combined folder preserves IDs, drafts and pending changes in their lists', () => {
     const previous = [folder([
         local({ googleListId: 'home', googleSyncPending: true, title: 'Pending edit' }),
