@@ -1,4 +1,5 @@
 export const GOOGLE_FOLDER_ID = 'google_main_folder';
+export const googleListFolderId = listId => `google_list_${encodeURIComponent(listId)}`;
 
 export function flattenTasks(tasks) {
     return tasks.flatMap(task => [task, ...flattenTasks(task.children || [])]);
@@ -37,12 +38,30 @@ export function acknowledgeGoogleWrite(tasks, sent, googleTaskId) {
 const remoteKey = (listId, id) => JSON.stringify([listId, id]);
 
 // Merge a complete, successful snapshot; never replace drafts or unacknowledged edits.
-export function mergeGoogleTasks(previous, remote, targetListId) {
+export function mergeGoogleTasks(previous, remote, targetListId, googleLists = []) {
     if (!Array.isArray(remote)) throw new Error('Invalid Google Tasks response');
     const allLocal = flattenTasks(previous);
     const localByRemote = new Map(allLocal.filter(t => t.googleTaskId).map(t => [remoteKey(t.googleListId, t.googleTaskId), t]));
     const remoteByKey = new Map(remote.map(t => [remoteKey(t.listId, t.id), t]));
     const idFor = (listId, id) => localByRemote.get(remoteKey(listId, id))?.id || `google_${listId}_${id}`;
+    const defaultGoogleListId = googleLists[0]?.id || remote[0]?.listId ||
+        allLocal.find(t => t.googleListId)?.googleListId || '@default';
+    const listFolders = new Map();
+    function ensureFolder(listId = defaultGoogleListId) {
+        if (!listFolders.has(listId)) {
+            const old = allLocal.find(t => t.isGoogleListFolder && t.googleListId === listId);
+            const info = googleLists.find(list => list.id === listId);
+            listFolders.set(listId, {
+                priority: 2, color: '#4285F4', createdAt: Date.now(), ...old,
+                id: googleListFolderId(listId), title: info?.title || old?.title || 'مهام جوجل',
+                type: 'folder', parentId: null, listId: targetListId, googleListId: listId,
+                isGoogleSynced: true, isGoogleListFolder: true, isCompleted: false,
+                isArchived: false, children: []
+            });
+        }
+        return listFolders.get(listId);
+    }
+    googleLists.forEach(list => ensureFolder(list.id));
     const nodes = new Map();
     for (const item of remote) {
         const local = localByRemote.get(remoteKey(item.listId, item.id));
@@ -51,7 +70,7 @@ export function mergeGoogleTasks(previous, remote, targetListId) {
             id: idFor(item.listId, item.id), type: 'item',
             googleTaskId: item.id, googleListId: item.listId, isGoogleSynced: true,
             listId: targetListId,
-            parentId: item.parent && remoteByKey.has(remoteKey(item.listId, item.parent)) ? idFor(item.listId, item.parent) : GOOGLE_FOLDER_ID,
+            parentId: item.parent && remoteByKey.has(remoteKey(item.listId, item.parent)) ? idFor(item.listId, item.parent) : googleListFolderId(item.listId),
             title: local?.googleSyncPending ? local.title : (item.title || ''),
             isCompleted: local?.googleSyncPending ? local.isCompleted : item.status === 'completed',
             completedAt: local?.googleSyncPending ? local.completedAt : item.completed ? Date.parse(item.completed) : undefined,
@@ -62,31 +81,32 @@ export function mergeGoogleTasks(previous, remote, targetListId) {
     }
     // Preserve local-only descendants, pending writes and their ancestors even if
     // a remote parent disappears or its list is temporarily deselected.
-    function retain(task, insideGoogle = false) {
+    function retain(task, insideGoogle = false, inheritedListId = defaultGoogleListId) {
         const inside = insideGoogle || task.isGoogleSynced || task.id === GOOGLE_FOLDER_ID;
+        const googleListId = task.googleListId || inheritedListId;
         let retainedChild = false;
-        for (const child of task.children || []) retainedChild = retain(child, inside) || retainedChild;
+        for (const child of task.children || []) retainedChild = retain(child, inside, googleListId) || retainedChild;
         const keep = inside && (!task.googleTaskId || task.googleSyncPending || retainedChild);
-        if (keep && task.id !== GOOGLE_FOLDER_ID && !nodes.has(task.id)) nodes.set(task.id, { ...task, children: [] });
+        if (keep && task.id !== GOOGLE_FOLDER_ID && !task.isGoogleListFolder && !nodes.has(task.id)) {
+            nodes.set(task.id, { ...task, googleListId, children: [] });
+        }
         return keep || nodes.has(task.id);
     }
     previous.forEach(task => retain(task));
-    const oldFolder = allLocal.find(t => t.id === GOOGLE_FOLDER_ID);
-    const folder = {
-        id: GOOGLE_FOLDER_ID, title: 'مهام جوجل', type: 'folder', color: '#4285F4',
-        priority: 2, createdAt: Date.now(), ...oldFolder, parentId: null,
-        listId: targetListId, isGoogleSynced: true, isCompleted: false, children: []
-    };
     for (const node of nodes.values()) {
         const parent = nodes.get(node.parentId);
         if (parent && parent !== node) parent.children.push(node);
-        else { node.parentId = GOOGLE_FOLDER_ID; folder.children.push(node); }
+        else {
+            const folder = ensureFolder(node.googleListId);
+            node.parentId = folder.id;
+            folder.children.push(node);
+        }
     }
     function removeLinked(tasks) {
         return tasks.filter(t => t.id !== GOOGLE_FOLDER_ID && !t.isGoogleSynced)
             .map(t => ({ ...t, children: removeLinked(t.children || []) }));
     }
-    return [...removeLinked(previous), folder];
+    return [...removeLinked(previous), ...listFolders.values()];
 }
 
 // Upload parents before children. Read the latest state after each acknowledgement

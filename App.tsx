@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { flushSync } from 'react-dom';
 import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit } from './types';
 import { Icons } from './components/Icons';
+import { GoogleMark } from './components/GoogleMark';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
@@ -278,11 +279,19 @@ export default function App() {
             // Uncommitted editor text must not be replaced by a background pull.
             if (!googleEditingRef.current) {
                 const selectedIds = googleSelectedListIds.length > 0 ? googleSelectedListIds : [googleListId || '@default'];
-                const result = await ipc.invoke('google-tasks:fetch', { tokens, listIds: selectedIds });
+                const [result, availableLists] = await Promise.all([
+                    ipc.invoke('google-tasks:fetch', { tokens, listIds: selectedIds }),
+                    ipc.invoke('google-tasks:fetch-lists', tokens)
+                ]);
                 if (!result || !Array.isArray(result.tasks)) throw new Error('تعذر جلب مهام جوجل');
+                if (!Array.isArray(availableLists)) throw new Error('تعذر تحميل قوائم جوجل');
                 if (!isCurrent() || googleEditingRef.current) return;
+                setGoogleAllLists(availableLists);
+                const selectedLists = selectedIds.includes('@default')
+                    ? availableLists.slice(0, 1).map(list => ({ ...list, id: '@default' }))
+                    : availableLists.filter(list => selectedIds.includes(list.id));
                 const targetListId = lists[0]?.id || 'default';
-                applyGoogleState(prev => mergeGoogleTasks(prev, result.tasks, targetListId));
+                applyGoogleState(prev => mergeGoogleTasks(prev, result.tasks, targetListId, selectedLists));
                 if (forceSwitch) {
                     setActiveListId(targetListId);
                     setViewMode('groups');
@@ -3178,6 +3187,7 @@ export default function App() {
                                     {task.title}
                                 </span>
                             )}
+                            {task.isGoogleListFolder && <GoogleMark />}
                             {activeChildren.length > 0 && (
                                 <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-en mx-2 inline-block shadow-sm" style={{ fontFamily: 'Acme' }}>
                                     {task.type === 'folder' ? activeChildren.length : activeChildren.filter(c => c.title.trim() !== '').length}
@@ -4705,6 +4715,7 @@ export default function App() {
                                                                                 {col.title}
                                                                             </span>
                                                                         )}
+                                                                        {findTask(col.id, tasks)?.isGoogleListFolder && <GoogleMark />}
                                                                         <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
                                                                              {getEffectiveTaskCount(col.tasks)}
                                                                          </span>
