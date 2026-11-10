@@ -15,5 +15,10 @@ if [[ ! -x "node_modules/.bin/concurrently" ]]; then
   exit 1
 fi
 
+# The installed app shares the same data and Firebase session with development
+# mode. Close it first so only one copy can make changes at a time.
+osascript -e 'tell application id "com.injaz.app" to quit' >/dev/null 2>&1 || true
+sleep 1
+
 echo "Starting Injaz development mode. Keep this window open while using the app."
-npm run electron:dev
+exec npm run electron:dev
