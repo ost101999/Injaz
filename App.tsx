@@ -2891,6 +2891,7 @@ export default function App() {
 
     const handleChangePriority = (taskId: string, priority: Priority) => {
         updateTask(taskId, { priority });
+        if (sortBy !== 'priority') setSortBy('priority');
         setContextMenu(prev => ({ ...prev, isOpen: false }));
         setActiveSubmenu(null);
     };
@@ -2925,6 +2926,7 @@ export default function App() {
             };
             return updateRecursive(prev);
         });
+        if (sortBy !== 'priority') setSortBy('priority');
         setContextMenu(prev => ({ ...prev, isOpen: false }));
         setActiveSubmenu(null);
         setSelectedTaskIds(new Set());
