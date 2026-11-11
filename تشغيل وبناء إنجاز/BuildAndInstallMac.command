@@ -17,6 +17,13 @@ if [[ -e "$stage_app" || -e "$old_app" ]]; then
   exit 1
 fi
 
+# Close any running copy of Injaz (installed or dev preview) first.
+echo "Closing Injaz if running..."
+osascript -e 'tell application id "com.injaz.app" to quit' >/dev/null 2>&1 || true
+killall "injaz---advanced-task-manager" >/dev/null 2>&1 || true
+pkill -f "$project_dir/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" >/dev/null 2>&1 || true
+sleep 1
+
 cd "$project_dir"
 if [[ -z "$(git status --porcelain 2>/dev/null)" ]]; then
   echo "Checking for latest commits from GitHub..."
