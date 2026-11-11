@@ -34,7 +34,15 @@ export default function App() {
     const [currentVersion, setCurrentVersion] = useState<string | null>(null);
     const [latestVersion, setLatestVersion] = useState<string | null>(null);
     const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
-
+    // Version whose banner the user closed. The red dot on the bell stays while an update exists,
+    // but the banner won't pop up again for that same version (persisted across restarts).
+    const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => localStorage.getItem('injaz_dismissed_update_version'));
+    const dismissUpdateBanner = () => {
+        const v = latestVersion || 'unknown';
+        localStorage.setItem('injaz_dismissed_update_version', v);
+        setDismissedUpdateVersion(v);
+    };
+    const isUpdateBannerVisible = updateAvailable && dismissedUpdateVersion !== (latestVersion || 'unknown');
     const checkForUpdates = () => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         if (!ipc) {
@@ -59,11 +67,11 @@ export default function App() {
 
     const handleBellClick = () => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
-        
+
         if (updateAvailable) {
-            if (confirm(`يتوفر إصدار أحدث (${latestVersion ? `v${latestVersion}` : ''}). هل تريد تشغيل أداة التحديث والبناء لجهازك الآن؟`)) {
-                handleStartUpdate();
-            }
+            // Re-open the update banner (the red dot stays on until the app is updated)
+            localStorage.removeItem('injaz_dismissed_update_version');
+            setDismissedUpdateVersion(null);
         } else if (updateStatus === 'error') {
             alert('حدث خطأ أثناء فحص التحديث: ' + updateErrorMsg);
         } else if (updateStatus === 'checking') {
@@ -377,7 +385,7 @@ export default function App() {
     // Periodic and focus-based sync
     useEffect(() => {
         if (googleTokens) {
-            
+
             // Sync when window gets focus (user returns to the app)
             const handleFocus = () => {
                 syncGoogleTasks();
@@ -385,8 +393,8 @@ export default function App() {
             window.addEventListener('focus', handleFocus);
 
             // Periodic sync every 2 minutes
-            const interval = setInterval(syncGoogleTasks, 2 * 60 * 1000); 
-            
+            const interval = setInterval(syncGoogleTasks, 2 * 60 * 1000);
+
             return () => {
                 window.removeEventListener('focus', handleFocus);
                 clearInterval(interval);
@@ -623,7 +631,7 @@ export default function App() {
 
             // Check if this group was previously empty/hidden in the current list
             const currentListTasks = tasksRef.current.filter(t => t.listId === activeListIdRef.current);
-            const wasEmpty = !currentListTasks.some(t => 
+            const wasEmpty = !currentListTasks.some(t =>
                 (groupId === '__ungrouped__' ? (t.parentId === null && t.type !== 'folder') : (t.parentId === groupId)) && !t.isCompleted
             );
 
@@ -709,7 +717,7 @@ export default function App() {
             const sidebar = document.querySelector('[data-sidebar]');
             const trigger = document.querySelector('[data-sidebar-trigger]');
             const isContextMenu = (e.target as HTMLElement).closest('[data-context-menu]') || (e.target as HTMLElement).closest('[data-list-context-menu]');
-            
+
             if (sidebar && !sidebar.contains(e.target as Node) && (!trigger || !trigger.contains(e.target as Node)) && !isContextMenu) {
                 closeSidebar();
             }
@@ -911,9 +919,9 @@ export default function App() {
         let count = 0;
         taskList.forEach(t => {
             if (t.isCompleted) return;
-            
+
             const incompleteChildren = (t.children || []).filter(c => !c.isCompleted);
-            
+
             if (incompleteChildren.length > 0) {
                 // If it has incomplete children, it acts as a Parent Task.
                 // Count its subtasks recursively but NOT the parent itself.
@@ -1270,7 +1278,7 @@ export default function App() {
                             if (readErr) return;
                             try {
                                 const imported = JSON.parse(content);
-                                
+
                                 // If the change was written by this client instance, ignore it
                                 if (imported.clientInstanceId === clientInstanceId) {
                                     localStorage.setItem('injaz_last_sync_mtime', mtime.toString());
@@ -1347,11 +1355,11 @@ export default function App() {
             // 2. Empty Parent Tasks at the bottom
             const isTaskEmptyParent = (t: Task) => {
                 if (t.isCompleted) return false;
-                
+
                 // No title + no children = brand new task being created, not an empty parent
                 const hasNoChildren = !t.children || t.children.length === 0;
                 if (hasNoChildren && !t.title.trim()) return false;
-                
+
                 // Smart fix for "Tab" / new subtask workflow:
                 // 1. When a new subtask is created (e.g., via Tab), there is a 100ms delay before inlineEditingId is set.
                 //    We use a 1-second grace period (hasJustCreatedChild) to prevent it from flashing to the bottom.
@@ -1390,11 +1398,11 @@ export default function App() {
 
         // Separate empty folders from non-empty items
         const nonEmptyItems = sorted.filter(t =>
-            t.type !== 'folder' || 
+            t.type !== 'folder' ||
             (t.children && t.children.filter(c => !c.isCompleted).length > 0)
         );
         const emptyFolders = sorted.filter(t =>
-            t.type === 'folder' && 
+            t.type === 'folder' &&
             (!t.children || t.children.filter(c => !c.isCompleted).length === 0)
         );
 
@@ -1456,7 +1464,7 @@ export default function App() {
             // Regular up/down movement
             if (direction === 'up') newIdx = Math.max(0, currentIdx - 1);
             if (direction === 'down') newIdx = Math.min(visualList.length - 1, currentIdx + 1);
-            
+
             // Unpinning logic: Toggle pin if moving "out" of the section boundaries via regular Arrows
             if (task.pinStatus === 'top' && direction === 'down' && currentIdx === visualList.filter(t => t.pinStatus === 'top').length - 1) {
                 newPinStatus = null;
@@ -2106,7 +2114,7 @@ export default function App() {
         const newFolderId = handleQuickAddFolder('');
         // Focus tasks tab if not already there
         if (activeTab !== 'tasks') setActiveTab('tasks');
-        
+
         // Start inline editing immediately
         setTimeout(() => {
             setInlineEditingId(newFolderId);
@@ -2393,7 +2401,7 @@ export default function App() {
 
         modifyTasks(prevTasks => {
             const toggledTask = findTask(id, prevTasks);
-            
+
             const toggleRecursive = (list: Task[]): Task[] => {
                 return list.map(t => {
                     if (t.id === id) {
@@ -2458,7 +2466,7 @@ export default function App() {
                 let folderId: string | null = null;
                 let currentId: string | undefined = toggledTask.parentId;
                 let folderTask: Task | null = null;
-                
+
                 // Traverse up to find the folder that contains this task
                 while (currentId && currentId !== 'root') {
                     const p = findTask(currentId, newTasks);
@@ -2474,14 +2482,14 @@ export default function App() {
                 if (folderTask) {
                     const effectiveCount = getEffectiveTaskCount(folderTask.children);
                     const hasActive = folderTask.children.some(c => !c.isCompleted);
-                    
+
                     if (!hasActive) {
                         // Completely empty of active tasks (Original logic -> show prompt)
                         setFolderActionPromptId(folderTask.id);
                     } else if (effectiveCount === 0) {
                         // Folder has active tasks (e.g. parent tasks), BUT effective count is 0.
                         // This means it only contains parent tasks with instructional subtasks!
-                        
+
                         // Collapse the folder immediately to trigger the closing animation
                         setCollapsedGroupIds(prev => {
                             const newSet = new Set(prev);
@@ -2524,7 +2532,7 @@ export default function App() {
             return newTasks;
         });
     };
-    
+
     const handleCompleteInGroups = (id: string) => {
         const targetTask = findTask(id, tasks);
         if (!targetTask || targetTask.isCompleted || !preferences.completionAnimation) {
@@ -3162,7 +3170,7 @@ export default function App() {
                             <Icons.ChevronDown size={20} className="text-gray-400" />
                         </div>
                         {task.pinStatus && (
-                            <div 
+                            <div
                                 className={`absolute left-2 ${task.pinStatus === 'top' ? 'top-3' : 'bottom-3'} w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] z-10`}
                                 title={task.pinStatus === 'top' ? 'مثبت في الأعلى' : 'مثبت في الأسفل'}
                             />
@@ -3216,7 +3224,7 @@ export default function App() {
                                     onClick={(e) => e.stopPropagation()}
                                 />
                             ) : (
-                                <span 
+                                <span
                                     className={`text-lg text-red-600 leading-relaxed transition-all duration-300 ${task.isCompleted ? 'line-through text-gray-400' : ''}`}
                                     style={isEmptyParent ? { opacity: 0.5 } : {}}
                                 >
@@ -3319,7 +3327,7 @@ export default function App() {
                 >
                     {/* Background highlight for the whole group - triggered by header hover */}
                     <div className="absolute inset-0 bg-indigo-50/30 opacity-0 group-hover/header:opacity-100 pointer-events-none transition-opacity duration-200" />
-                    
+
                     {isDragOver && dragOverPosition === 'center' && <div className="absolute inset-0 border-2 border-indigo-500 rounded-xl z-20 bg-indigo-50/20 pointer-events-none flex items-center justify-center animate-fadeIn"><div className="bg-indigo-600 text-white text-xs px-2 py-1 rounded shadow-md font-bold">إنشاء مجموعة</div></div>}
 
                     <div className="group/header relative z-10 flex items-start gap-3 hover:bg-indigo-50/60 rounded-lg transition-all duration-200">
@@ -3335,7 +3343,7 @@ export default function App() {
                             <Icons.Grip size={14} />
                         </div>
                         {task.pinStatus && (
-                            <div 
+                            <div
                                 className={`absolute left-2 ${task.pinStatus === 'top' ? 'top-2' : 'bottom-2'} w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] z-10`}
                                 title={task.pinStatus === 'top' ? 'مثبت في الأعلى' : 'مثبت في الأسفل'}
                             />
@@ -3409,7 +3417,7 @@ export default function App() {
                                                     // Allow default behavior (new line)
                                                     return;
                                                 }
-                                                
+
                                                 e.preventDefault();
 
                                                 if (e.ctrlKey) {
@@ -3497,17 +3505,17 @@ export default function App() {
                                 {originBadge && !isEditing && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">{originBadge.name}</span>}
                             </div>
                             {task.imageUrl && (
-                                <div 
+                                <div
                                     className="mt-2 mb-1 rounded-lg overflow-hidden border border-gray-100/60 shadow-sm bg-gray-50 cursor-zoom-in group/listimg"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         window.open(task.imageUrl, '_blank');
                                     }}
                                 >
-                                    <img 
-                                        src={task.imageUrl} 
-                                        alt="" 
-                                        className="w-full h-auto max-h-48 object-cover transition-transform duration-500 group-hover/listimg:scale-105" 
+                                    <img
+                                        src={task.imageUrl}
+                                        alt=""
+                                        className="w-full h-auto max-h-48 object-cover transition-transform duration-500 group-hover/listimg:scale-105"
                                         onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
                                     />
                                 </div>
@@ -3649,7 +3657,7 @@ export default function App() {
                 const activeEl = document.activeElement as HTMLElement;
                 const tag = activeEl?.tagName;
                 const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || activeEl?.isContentEditable;
-                
+
                 if (!isInput) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -3697,7 +3705,7 @@ export default function App() {
                                 }
 
                                 const newId = addTask({ title: '', priority: Priority.Medium, parentId: targetParentId, listId: activeListId });
-                                
+
                                 // Prevent auto-collapse effect from hiding our newly opened group
                                 seenColumnsRef.current.add(targetParentId || '__ungrouped__');
 
@@ -3728,16 +3736,16 @@ export default function App() {
     // --- EFFECT: AUTO-ARCHIVE INSTRUCTIONAL-ONLY GROUPS (e.g. after Undo) ---
     useEffect(() => {
         const timeoutIds: NodeJS.Timeout[] = [];
-        
+
         tasks.forEach(t => {
             if (t.type === 'folder' && !t.isArchived && t.listId === activeListId) {
                 const hasActive = t.children.some(c => !c.isCompleted);
                 const effectiveCount = getEffectiveTaskCount(t.children);
-                
+
                 // Only target folders with 0 effective count BUT still having active tasks (instructional only)
                 if (hasActive && effectiveCount === 0) {
                     const isEditing = inlineEditingId === t.id || t.children.some(c => c.id === inlineEditingId || (c.children && c.children.some(sub => sub.id === inlineEditingId)));
-                    
+
                     if (!isEditing) {
                         // Collapse immediately
                         setCollapsedGroupIds(prev => {
@@ -3746,7 +3754,7 @@ export default function App() {
                             next.add(t.id);
                             return next;
                         });
-                        
+
                         // Delay archive
                         const tid = setTimeout(() => {
                             updateTask(t.id, { isArchived: true });
@@ -3756,7 +3764,7 @@ export default function App() {
                 }
             }
         });
-        
+
         return () => timeoutIds.forEach(clearTimeout);
     }, [tasks, activeListId, inlineEditingId, getEffectiveTaskCount]);
 
@@ -3764,7 +3772,7 @@ export default function App() {
     useEffect(() => {
         const handleWidgetNavigation = (e: KeyboardEvent) => {
             if (activeTab !== 'tasks' || viewMode !== 'groups') return;
-            
+
             // Skip shortcuts if user is typing in any input or contentEditable
             const activeEl = document.activeElement as HTMLElement;
             const tag = activeEl?.tagName;
@@ -3832,12 +3840,12 @@ export default function App() {
                     e.preventDefault();
                     const targetId = cols[nextIndex];
                     lastActiveGroupColRef.current = targetId;
-                    
+
                     // Simulate click: Open target and handle auto-collapse
                     setCollapsedGroupIds(prev => {
                         const next = new Set(prev);
                         next.delete(targetId); // Open target
-                        
+
                         if (preferences.autoCollapse) {
                             cols.forEach(id => {
                                 if (id !== targetId) next.add(id);
@@ -3941,7 +3949,7 @@ export default function App() {
                             })()}
                         >
                             {/* Header Tabs */}
-                            <div 
+                            <div
                                 className="flex shrink-0 overflow-x-auto whitespace-nowrap border-b border-gray-100 bg-gray-50/50"
                                 onWheel={(e) => {
                                     const tabs: any[] = ['appearance', 'general', 'shortcuts', 'behavior', 'habits', 'connections'];
@@ -4270,7 +4278,7 @@ export default function App() {
                                                     <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ${preferences.separateSpacedHabits ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                                 </div>
                                             </label>
-                                            
+
                                             <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition group">
                                                 <span className="text-sm font-bold text-gray-700">إظهار العادات المتباعدة المنتهية في القائمة</span>
                                                 <div className="relative inline-block w-10 h-6 align-middle select-none transition duration-200 ease-in">
@@ -4315,9 +4323,9 @@ export default function App() {
                                     <div className="space-y-3 animate-fadeIn mt-1">
                                         <div>
                                             <h4 className="text-[13px] text-gray-500 font-bold mb-3">ربط الخدمات الخارجية</h4>
-                                            
+
                                             {!googleTokens ? (
-                                                <button 
+                                                <button
                                                     onClick={async (e) => {
                                                         const btn = e.currentTarget;
                                                         btn.disabled = true;
@@ -4344,10 +4352,10 @@ export default function App() {
                                                     className="w-full p-3 bg-white border border-gray-200 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition group shadow-sm"
                                                 >
                                                     <svg width="18" height="18" viewBox="0 0 18 18">
-                                                        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-                                                        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-                                                        <path d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.712s.102-1.172.282-1.712V4.956H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.044l3.007-2.332z" fill="#FBBC05"/>
-                                                        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.443 2.048.957 4.956l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                                                        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
+                                                        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
+                                                        <path d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.712s.102-1.172.282-1.712V4.956H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.044l3.007-2.332z" fill="#FBBC05" />
+                                                        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.443 2.048.957 4.956l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335" />
                                                     </svg>
                                                     <span className="text-sm font-bold text-gray-700">الربط مع مهام جوجل (Google Tasks)</span>
                                                 </button>
@@ -4358,7 +4366,7 @@ export default function App() {
                                                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                                                             <span className="text-sm font-bold text-green-700">مرتبط بمهام جوجل</span>
                                                         </div>
-                                                        <button 
+                                                        <button
                                                             onClick={() => {
                                                                 setGoogleTokens(null);
                                                                 googleContextRef.current = '';
@@ -4373,8 +4381,8 @@ export default function App() {
                                                             فصل الحساب
                                                         </button>
                                                     </div>
-                                                    
-                                                    <button 
+
+                                                    <button
                                                         onClick={() => syncGoogleTasks()}
                                                         disabled={isSyncingGoogle}
                                                         className={`w-full p-2 rounded-lg bg-indigo-600 text-white font-bold text-sm transition flex items-center justify-center gap-2 ${isSyncingGoogle ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'}`}
@@ -4393,14 +4401,14 @@ export default function App() {
                                                     )}
                                                     {/* List Selection UI - Toggle style */}
                                                     <div className="pt-3 border-t border-gray-100">
-                                                        <button 
+                                                        <button
                                                             onClick={() => setIsGoogleListsExpanded(!isGoogleListsExpanded)}
                                                             className="w-full flex items-center justify-between text-[11px] font-bold text-gray-500 mb-2 hover:text-indigo-600 transition-colors"
                                                         >
                                                             <span>القوائم المتزامنة ({googleSelectedListIds.length === 0 ? 'لا يوجد' : `${googleSelectedListIds.length} قائمة`})</span>
                                                             <Icons.ChevronDown size={14} className={`transition-transform duration-200 ${isGoogleListsExpanded ? 'rotate-180' : ''}`} />
                                                         </button>
-                                                        
+
                                                         {isGoogleListsExpanded && (
                                                             <div className="space-y-1 max-h-48 overflow-y-auto pr-1 animate-fadeIn">
                                                                 {googleAllLists.length === 0 && (
@@ -4408,8 +4416,8 @@ export default function App() {
                                                                 )}
                                                                 {googleAllLists.map(list => (
                                                                     <label key={list.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition border border-transparent hover:border-gray-100">
-                                                                        <input 
-                                                                            type="checkbox" 
+                                                                        <input
+                                                                            type="checkbox"
                                                                             checked={googleSelectedListIds.includes(list.id)}
                                                                             onChange={(e) => {
                                                                                 const checked = e.target.checked;
@@ -4479,8 +4487,8 @@ export default function App() {
                                                             <p className="text-[11px] text-gray-400">حفظ وتحديث المهام تلقائياً عبر سحابتك الخاصة</p>
                                                         </div>
                                                         <label className="relative inline-flex items-center cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 checked={isCloudSyncEnabled}
                                                                 disabled={firebaseSync.connected}
                                                                 onChange={(e) => {
@@ -4505,14 +4513,14 @@ export default function App() {
                                                     <div className="space-y-2">
                                                         <p className="text-xs font-bold text-gray-500">مسار ملف المزامنة:</p>
                                                         <div className="flex gap-2">
-                                                            <input 
-                                                                type="text" 
-                                                                readOnly 
-                                                                placeholder="اختر ملفاً في Google Drive أو iCloud أو Dropbox..." 
-                                                                value={syncFilePath || ''} 
+                                                            <input
+                                                                type="text"
+                                                                readOnly
+                                                                placeholder="اختر ملفاً في Google Drive أو iCloud أو Dropbox..."
+                                                                value={syncFilePath || ''}
                                                                 className="flex-1 p-2 border border-gray-200 rounded-lg text-[11px] bg-gray-50 font-mono text-gray-600 truncate"
                                                             />
-                                                            <button 
+                                                            <button
                                                                 onClick={async () => {
                                                                     try {
                                                                         const ipc = (window as any).require?.('electron')?.ipcRenderer;
@@ -4566,8 +4574,8 @@ export default function App() {
                 {/* Empty third column for balance */}
                 <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex justify-end px-4">
                     {/* Bell Icon */}
-                    <button 
-                        onClick={handleBellClick} 
+                    <button
+                        onClick={handleBellClick}
                         className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
                         title="التحديثات"
                     >
@@ -4731,436 +4739,436 @@ export default function App() {
                                             setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: col.id, source: 'context' });
                                         }}
                                     >
-                                                                        <Icons.ChevronDown
-                                                                            size={15}
-                                                                            className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${collapsedGroupIds.has(col.id) ? '-rotate-90' : ''}`}
-                                                                        />
-                                                                        {inlineEditingId === col.id ? (
-                                                                            <div
-                                                                                key={`inline-editor-${col.id}`}
-                                                                                ref={inlineEditRef as any}
-                                                                                data-inline-edit
-                                                                                contentEditable
-                                                                                onBlur={handleCommitInlineEdit}
-                                                                                onKeyDown={(e) => {
-                                                                                    if (e.key === 'Enter') { 
-                                                                                        e.preventDefault(); 
-                                                                                        const newTitle = e.currentTarget.textContent?.trim() || '';
-                                                                                        if (col.id) {
-                                                                                            const folder = findTask(col.id, tasks);
-                                                                                            updateTask(col.id, { title: newTitle });
-                                                                                            
-                                                                                            // Only trigger "Add Task" flow if it was a newly created empty group
-                                                                                            if (!folder?.title || folder.title === '') {
-                                                                                                const newTaskId = addTask({ title: '', priority: Priority.Medium, parentId: col.id, listId: activeListId });
-                                                                                                seenColumnsRef.current.add(col.id);
-                                                                                                setCollapsedGroupIds(prev => {
-                                                                                                    const next = new Set(prev);
-                                                                                                    next.delete(col.id);
-                                                                                                    return next;
-                                                                                                });
-                                                                                                setTimeout(() => {
-                                                                                                    setInlineEditingId(newTaskId);
-                                                                                                    setInlineEditText('');
-                                                                                                }, 100);
-                                                                                            } else {
-                                                                                                // Existing group renamed: just commit and close editing
-                                                                                                setInlineEditingId(null);
-                                                                                            }
-                                                                                        } else {
+                                        <Icons.ChevronDown
+                                            size={15}
+                                            className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${collapsedGroupIds.has(col.id) ? '-rotate-90' : ''}`}
+                                        />
+                                        {inlineEditingId === col.id ? (
+                                            <div
+                                                key={`inline-editor-${col.id}`}
+                                                ref={inlineEditRef as any}
+                                                data-inline-edit
+                                                contentEditable
+                                                onBlur={handleCommitInlineEdit}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        const newTitle = e.currentTarget.textContent?.trim() || '';
+                                                        if (col.id) {
+                                                            const folder = findTask(col.id, tasks);
+                                                            updateTask(col.id, { title: newTitle });
+
+                                                            // Only trigger "Add Task" flow if it was a newly created empty group
+                                                            if (!folder?.title || folder.title === '') {
+                                                                const newTaskId = addTask({ title: '', priority: Priority.Medium, parentId: col.id, listId: activeListId });
+                                                                seenColumnsRef.current.add(col.id);
+                                                                setCollapsedGroupIds(prev => {
+                                                                    const next = new Set(prev);
+                                                                    next.delete(col.id);
+                                                                    return next;
+                                                                });
+                                                                setTimeout(() => {
+                                                                    setInlineEditingId(newTaskId);
+                                                                    setInlineEditText('');
+                                                                }, 100);
+                                                            } else {
+                                                                // Existing group renamed: just commit and close editing
+                                                                setInlineEditingId(null);
+                                                            }
+                                                        } else {
+                                                            setInlineEditingId(null);
+                                                        }
+                                                    }
+                                                    if (e.key === 'Escape') { e.preventDefault(); setInlineEditingId(null); }
+                                                }}
+                                                className={`flex-1 bg-transparent outline-none text-base text-red-500 ${/[\u0600-\u06FF]/.test(inlineEditText || col.title) ? 'font-bold' : 'font-medium'} transition-all relative empty:before:content-[attr(placeholder)] empty:before:text-red-200 empty:before:pointer-events-none`}
+                                                placeholder="اسم المجموعة"
+                                                onInput={(e) => setInlineEditText(e.currentTarget.textContent || '')}
+                                                autoFocus
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        ) : (
+                                            <span
+                                                className={`${/[\u0600-\u06FF]/.test(col.title) ? 'font-bold' : 'font-medium'} text-red-500 text-base flex-1`}
+                                                onDoubleClick={(e) => {
+                                                    if (col.id === '__ungrouped__') return;
+                                                    e.stopPropagation();
+                                                    const folder = findTask(col.id, tasks);
+                                                    if (folder) handleStartInlineEdit(e as any, folder);
+                                                }}
+                                            >
+                                                {col.title}
+                                            </span>
+                                        )}
+                                        {findTask(col.id, tasks)?.isGoogleListFolder && <GoogleMark />}
+                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                            {getEffectiveTaskCount(col.tasks)}
+                                        </span>
+                                    </div>
+                                    {/* Column Tasks - animated expand/collapse like list view */}
+                                    <div className={`grid transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsedGroupIds.has(col.id) ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+                                        <div className="overflow-hidden">
+                                            <div
+                                                className="px-3 py-2 flex flex-col min-h-[40px]"
+                                            >
+                                                {col.id === folderActionPromptId ? (
+                                                    <div className="py-4 px-2 bg-indigo-50/50 rounded-xl animate-fadeIn text-center">
+                                                        <p className="text-xs font-bold text-indigo-600 mb-3">انتهت مهام المجموعة، ماذا تفعل بها؟</p>
+                                                        <div className="flex gap-2 justify-center">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleFolderPromptAction(col.id, 'archive'); }}
+                                                                className="px-4 py-1.5 bg-white border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition-colors shadow-sm"
+                                                            >
+                                                                أرشفة
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleFolderPromptAction(col.id, 'delete'); }}
+                                                                className="px-4 py-1.5 bg-red-50 border border-red-100 rounded-lg text-xs font-bold text-red-600 hover:bg-red-100 transition-colors shadow-sm"
+                                                            >
+                                                                لا
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : col.tasks.length === 0 ? (
+                                                    <p className="text-center text-gray-300 text-sm py-4">فارغة</p>
+                                                ) : (
+                                                    col.tasks.map((task, idx) => {
+                                                        const isEditingChild = (task.children || []).some((c: Task) => c.id === inlineEditingId);
+                                                        const isTaskEmpty = !task.isCompleted
+                                                            && getEffectiveTaskCount([task]) === 0
+                                                            && inlineEditingId !== task.id
+                                                            && !isEditingChild;
+                                                        return (
+                                                            <div
+                                                                key={task.id}
+                                                                draggable
+                                                                onDragStart={e => {
+                                                                    e.dataTransfer.setData('taskId', task.id);
+                                                                    e.dataTransfer.setData('colId', col.id);
+                                                                    e.dataTransfer.effectAllowed = 'move';
+                                                                }}
+                                                                onDragOver={e => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    e.currentTarget.classList.add('bg-indigo-50/80');
+                                                                }}
+                                                                onDragLeave={e => {
+                                                                    e.currentTarget.classList.remove('bg-indigo-50/80');
+                                                                }}
+                                                                onDrop={e => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    e.currentTarget.classList.remove('bg-indigo-50/80');
+                                                                    const draggedId = e.dataTransfer.getData('taskId');
+                                                                    if (!draggedId || draggedId === task.id) return;
+
+                                                                    modifyTasks(prev => {
+                                                                        let draggedTask: Task | null = null;
+                                                                        const removeFrom = (list: Task[]): Task[] => list.map(t => {
+                                                                            if (t.id === draggedId) { draggedTask = { ...t }; return null!; }
+                                                                            if (t.children) return { ...t, children: removeFrom(t.children).filter(Boolean) };
+                                                                            return t;
+                                                                        }).filter(Boolean);
+
+                                                                        const checkDescendant = (t: Task, searchId: string): boolean => {
+                                                                            if (t.id === searchId) return true;
+                                                                            if (t.children) return t.children.some(c => checkDescendant(c, searchId));
+                                                                            return false;
+                                                                        };
+
+                                                                        const findT = (list: Task[]): Task | null => {
+                                                                            for (const t of list) {
+                                                                                if (t.id === draggedId) return t;
+                                                                                if (t.children) {
+                                                                                    const found = findT(t.children);
+                                                                                    if (found) return found;
+                                                                                }
+                                                                            }
+                                                                            return null;
+                                                                        };
+
+                                                                        const dt = findT(prev);
+                                                                        if (!dt) return prev;
+                                                                        if (checkDescendant(dt, task.id)) return prev;
+
+                                                                        const updated = removeFrom(prev);
+                                                                        const insertTo = (list: Task[]): Task[] => list.map(t => {
+                                                                            if (t.id === task.id) {
+                                                                                return {
+                                                                                    ...t,
+                                                                                    children: [...(t.children || []), { ...dt, parentId: task.id }]
+                                                                                };
+                                                                            }
+                                                                            if (t.children) return { ...t, children: insertTo(t.children) };
+                                                                            return t;
+                                                                        });
+                                                                        return insertTo(updated);
+                                                                    });
+                                                                }}
+                                                                className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
+                                                                onClick={e => {
+                                                                    const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
+                                                                    if (hasSubtasks) {
+                                                                        const target = e.target as HTMLElement;
+                                                                        const isTextClick = target.closest('[data-task-title]') !== null;
+                                                                        if (isTextClick) {
+                                                                            handleStartInlineEdit(e, task);
+                                                                        } else {
+                                                                            e.stopPropagation();
+                                                                            toggleFolderExpand(e, task.id);
+                                                                        }
+                                                                    } else {
+                                                                        handleStartInlineEdit(e, task);
+                                                                    }
+                                                                }}
+                                                                onDoubleClick={e => {
+                                                                    e.stopPropagation();
+                                                                    handleStartInlineEdit(e, task);
+                                                                }}
+                                                                onContextMenu={e => {
+                                                                    e.preventDefault();
+                                                                    setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: task.id, source: 'context' });
+                                                                }}
+                                                            >
+                                                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-2.5 ${task.priority === 1 ? 'bg-red-500' : task.priority === 2 ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                                                                {task.pinStatus && (
+                                                                    <div
+                                                                        className={`absolute left-1 ${task.pinStatus === 'top' ? 'top-1.5' : 'bottom-1.5'} w-1 h-1 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] z-10`}
+                                                                        title={task.pinStatus === 'top' ? 'مثبت في الأعلى' : 'مثبت في الأسفل'}
+                                                                    />
+                                                                )}
+                                                                <button
+                                                                    onClick={e => { e.stopPropagation(); handleCompleteInGroups(task.id); }}
+                                                                    className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1.5 transition-all duration-300 ${task.isCompleted || completingTaskId === task.id ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'} ${completingTaskId === task.id ? 'scale-125' : ''}`}
+                                                                >
+                                                                    {(task.isCompleted || completingTaskId === task.id) && <Icons.Check size={8} className={`text-white ${completingTaskId === task.id ? 'animate-premium-check' : ''}`} strokeWidth={3} />}
+                                                                </button>
+                                                                <div className="flex-1 min-w-0">
+                                                                    {inlineEditingId === task.id ? (
+                                                                        <div
+                                                                            key={`inline-editor-${task.id}`}
+                                                                            ref={inlineEditRef as any}
+                                                                            data-inline-edit
+                                                                            autoFocus
+                                                                            contentEditable
+                                                                            onPaste={(e) => handleInlinePasteImage(e, task.id)}
+                                                                            onBlur={handleCommitInlineEdit}
+                                                                            onKeyDown={e => {
+                                                                                if (e.key === 'ArrowUp') {
+                                                                                    e.preventDefault();
+                                                                                    handleMoveTask(task.id, e.shiftKey ? 'top' : 'up', e.repeat);
+                                                                                }
+                                                                                if (e.key === 'ArrowDown') {
+                                                                                    e.preventDefault();
+                                                                                    handleMoveTask(task.id, e.shiftKey ? 'bottom' : 'down', e.repeat);
+                                                                                }
+
+                                                                                if (e.key === 'Enter') {
+                                                                                    if (e.shiftKey) return; // New line
+                                                                                    e.preventDefault();
+                                                                                    if (e.ctrlKey) {
+                                                                                        const val = e.currentTarget.textContent?.trim();
+                                                                                        if (!val && !task.title) {
+                                                                                            modifyTasks(prev => removeTaskById(prev, task.id));
                                                                                             setInlineEditingId(null);
+                                                                                        } else {
+                                                                                            updateTask(task.id, { title: val || task.title }, !task.title);
+                                                                                            const newId = addTask({ title: '', priority: Priority.Medium, parentId: task.parentId, listId: activeListId });
+                                                                                            setTimeout(() => {
+                                                                                                setInlineEditingId(newId);
+                                                                                                setInlineEditText('');
+                                                                                            }, 50);
                                                                                         }
-                                                                                     }
-                                                                                    if (e.key === 'Escape') { e.preventDefault(); setInlineEditingId(null); }
-                                                                                }}
-                                                                                className={`flex-1 bg-transparent outline-none text-base text-red-500 ${/[\u0600-\u06FF]/.test(inlineEditText || col.title) ? 'font-bold' : 'font-medium'} transition-all relative empty:before:content-[attr(placeholder)] empty:before:text-red-200 empty:before:pointer-events-none`}
-                                                                                placeholder="اسم المجموعة"
-                                                                                onInput={(e) => setInlineEditText(e.currentTarget.textContent || '')}
-                                                                                autoFocus
-                                                                                onClick={(e) => e.stopPropagation()}
-                                                                            />
-                                                                        ) : (
-                                                                            <span
-                                                                                className={`${/[\u0600-\u06FF]/.test(col.title) ? 'font-bold' : 'font-medium'} text-red-500 text-base flex-1`}
-                                                                                onDoubleClick={(e) => {
-                                                                                    if (col.id === '__ungrouped__') return;
-                                                                                    e.stopPropagation();
-                                                                                    const folder = findTask(col.id, tasks);
-                                                                                    if (folder) handleStartInlineEdit(e as any, folder);
-                                                                                }}
-                                                                            >
-                                                                                {col.title}
-                                                                            </span>
-                                                                        )}
-                                                                        {findTask(col.id, tasks)?.isGoogleListFolder && <GoogleMark />}
-                                                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                                                                             {getEffectiveTaskCount(col.tasks)}
-                                                                         </span>
-                                                                    </div>
-                                                                    {/* Column Tasks - animated expand/collapse like list view */}
-                                                                    <div className={`grid transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsedGroupIds.has(col.id) ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
-                                                                        <div className="overflow-hidden">
-                                                                            <div
-                                                                                className="px-3 py-2 flex flex-col min-h-[40px]"
-                                                                            >
-                                                                                 {col.id === folderActionPromptId ? (
-                                                                                     <div className="py-4 px-2 bg-indigo-50/50 rounded-xl animate-fadeIn text-center">
-                                                                                         <p className="text-xs font-bold text-indigo-600 mb-3">انتهت مهام المجموعة، ماذا تفعل بها؟</p>
-                                                                                         <div className="flex gap-2 justify-center">
-                                                                                             <button 
-                                                                                                 onClick={(e) => { e.stopPropagation(); handleFolderPromptAction(col.id, 'archive'); }}
-                                                                                                 className="px-4 py-1.5 bg-white border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition-colors shadow-sm"
-                                                                                             >
-                                                                                                 أرشفة
-                                                                                             </button>
-                                                                                             <button 
-                                                                                                 onClick={(e) => { e.stopPropagation(); handleFolderPromptAction(col.id, 'delete'); }}
-                                                                                                 className="px-4 py-1.5 bg-red-50 border border-red-100 rounded-lg text-xs font-bold text-red-600 hover:bg-red-100 transition-colors shadow-sm"
-                                                                                             >
-                                                                                                 لا
-                                                                                             </button>
-                                                                                         </div>
-                                                                                     </div>
-                                                                                 ) : col.tasks.length === 0 ? (
-                                                                                    <p className="text-center text-gray-300 text-sm py-4">فارغة</p>
-                                                                                ) : (
-                                                                                    col.tasks.map((task, idx) => {
-                                                                                        const isEditingChild = (task.children || []).some((c: Task) => c.id === inlineEditingId);
-                                                                                        const isTaskEmpty = !task.isCompleted
-                                                                                            && getEffectiveTaskCount([task]) === 0
-                                                                                            && inlineEditingId !== task.id
-                                                                                            && !isEditingChild;
-                                                                                        return (
-                                                                                        <div
-                                                                                            key={task.id}
-                                                                                            draggable
-                                                                                            onDragStart={e => {
-                                                                                                e.dataTransfer.setData('taskId', task.id);
-                                                                                                e.dataTransfer.setData('colId', col.id);
-                                                                                                e.dataTransfer.effectAllowed = 'move';
-                                                                                            }}
-                                                                                            onDragOver={e => {
-                                                                                                e.preventDefault();
-                                                                                                e.stopPropagation();
-                                                                                                e.currentTarget.classList.add('bg-indigo-50/80');
-                                                                                            }}
-                                                                                            onDragLeave={e => {
-                                                                                                e.currentTarget.classList.remove('bg-indigo-50/80');
-                                                                                            }}
-                                                                                            onDrop={e => {
-                                                                                                e.preventDefault();
-                                                                                                e.stopPropagation();
-                                                                                                e.currentTarget.classList.remove('bg-indigo-50/80');
-                                                                                                const draggedId = e.dataTransfer.getData('taskId');
-                                                                                                if (!draggedId || draggedId === task.id) return;
-                                                                                                
-                                                                                                modifyTasks(prev => {
-                                                                                                    let draggedTask: Task | null = null;
-                                                                                                    const removeFrom = (list: Task[]): Task[] => list.map(t => {
-                                                                                                        if (t.id === draggedId) { draggedTask = { ...t }; return null!; }
-                                                                                                        if (t.children) return { ...t, children: removeFrom(t.children).filter(Boolean) };
-                                                                                                        return t;
-                                                                                                    }).filter(Boolean);
-                                                                                                    
-                                                                                                    const checkDescendant = (t: Task, searchId: string): boolean => {
-                                                                                                        if (t.id === searchId) return true;
-                                                                                                        if (t.children) return t.children.some(c => checkDescendant(c, searchId));
-                                                                                                        return false;
-                                                                                                    };
-                                                                                                    
-                                                                                                    const findT = (list: Task[]): Task | null => {
-                                                                                                        for (const t of list) {
-                                                                                                            if (t.id === draggedId) return t;
-                                                                                                            if (t.children) {
-                                                                                                                const found = findT(t.children);
-                                                                                                                if (found) return found;
-                                                                                                            }
-                                                                                                        }
-                                                                                                        return null;
-                                                                                                    };
-                                                                                                    
-                                                                                                    const dt = findT(prev);
-                                                                                                    if (!dt) return prev;
-                                                                                                    if (checkDescendant(dt, task.id)) return prev;
-                                                                                                    
-                                                                                                    const updated = removeFrom(prev);
-                                                                                                    const insertTo = (list: Task[]): Task[] => list.map(t => {
-                                                                                                        if (t.id === task.id) {
-                                                                                                            return { 
-                                                                                                                ...t, 
-                                                                                                                children: [...(t.children || []), { ...dt, parentId: task.id }] 
-                                                                                                            };
-                                                                                                        }
-                                                                                                        if (t.children) return { ...t, children: insertTo(t.children) };
-                                                                                                        return t;
-                                                                                                    });
-                                                                                                    return insertTo(updated);
-                                                                                                });
-                                                                                            }}
-                                                                                            className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
-                                                                                            onClick={e => {
-                                                                                                const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
-                                                                                                if (hasSubtasks) {
-                                                                                                    const target = e.target as HTMLElement;
-                                                                                                    const isTextClick = target.closest('[data-task-title]') !== null;
-                                                                                                    if (isTextClick) {
-                                                                                                        handleStartInlineEdit(e, task);
-                                                                                                    } else {
-                                                                                                        e.stopPropagation();
-                                                                                                        toggleFolderExpand(e, task.id);
-                                                                                                    }
-                                                                                                } else {
-                                                                                                    handleStartInlineEdit(e, task);
-                                                                                                }
-                                                                                            }}
-                                                                                            onDoubleClick={e => {
-                                                                                                e.stopPropagation();
-                                                                                                handleStartInlineEdit(e, task);
-                                                                                            }}
-                                                                                            onContextMenu={e => {
-                                                                                                e.preventDefault();
-                                                                                                setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: task.id, source: 'context' });
-                                                                                            }}
-                                                                                        >
-                                                                                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-2.5 ${task.priority === 1 ? 'bg-red-500' : task.priority === 2 ? 'bg-indigo-500' : 'bg-gray-300'}`} />
-                                                                                            {task.pinStatus && (
-                                                                                                <div 
-                                                                                                    className={`absolute left-1 ${task.pinStatus === 'top' ? 'top-1.5' : 'bottom-1.5'} w-1 h-1 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] z-10`}
-                                                                                                    title={task.pinStatus === 'top' ? 'مثبت في الأعلى' : 'مثبت في الأسفل'}
-                                                                                                />
-                                                                                            )}
-                                                                                            <button
-                                                                                                onClick={e => { e.stopPropagation(); handleCompleteInGroups(task.id); }}
-                                                                                                className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1.5 transition-all duration-300 ${task.isCompleted || completingTaskId === task.id ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'} ${completingTaskId === task.id ? 'scale-125' : ''}`}
-                                                                                            >
-                                                                                                {(task.isCompleted || completingTaskId === task.id) && <Icons.Check size={8} className={`text-white ${completingTaskId === task.id ? 'animate-premium-check' : ''}`} strokeWidth={3} />}
-                                                                                            </button>
-                                                                                            <div className="flex-1 min-w-0">
-                                                                                                {inlineEditingId === task.id ? (
-                                                                                                    <div
-                                                                                                        key={`inline-editor-${task.id}`}
-                                                                                                        ref={inlineEditRef as any}
-                                                                                                        data-inline-edit
-                                                                                                        autoFocus
-                                                                                                        contentEditable
-                                                                                                        onPaste={(e) => handleInlinePasteImage(e, task.id)}
-                                                                                                        onBlur={handleCommitInlineEdit}
-                                                                                                        onKeyDown={e => {
-                                                                                                            if (e.key === 'ArrowUp') {
-                                                                                                                e.preventDefault();
-                                                                                                                handleMoveTask(task.id, e.shiftKey ? 'top' : 'up', e.repeat);
-                                                                                                            }
-                                                                                                            if (e.key === 'ArrowDown') {
-                                                                                                                e.preventDefault();
-                                                                                                                handleMoveTask(task.id, e.shiftKey ? 'bottom' : 'down', e.repeat);
-                                                                                                            }
-
-                                                                                                            if (e.key === 'Enter') {
-                                                                                                                if (e.shiftKey) return; // New line
-                                                                                                                e.preventDefault();
-                                                                                                                if (e.ctrlKey) {
-                                                                                                                    const val = e.currentTarget.textContent?.trim();
-                                                                                                                    if (!val && !task.title) {
-                                                                                                                        modifyTasks(prev => removeTaskById(prev, task.id));
-                                                                                                                        setInlineEditingId(null);
-                                                                                                                    } else {
-                                                                                                                        updateTask(task.id, { title: val || task.title }, !task.title);
-                                                                                                                        const newId = addTask({ title: '', priority: Priority.Medium, parentId: task.parentId, listId: activeListId });
-                                                                                                                        setTimeout(() => {
-                                                                                                                            setInlineEditingId(newId);
-                                                                                                                            setInlineEditText('');
-                                                                                                                        }, 50);
-                                                                                                                    }
-                                                                                                                } else {
-                                                                                                                    handleCommitInlineEdit();
-                                                                                                                }
-                                                                                                            }
-                                                                                                            if (e.key === 'Escape') {
-                                                                                                                e.preventDefault();
-                                                                                                                const val = e.currentTarget.textContent?.trim();
-                                                                                                                if (!val && !task.title) {
-                                                                                                                    modifyTasks(prev => removeTaskById(prev, task.id));
-                                                                                                                } else if (val) {
-                                                                                                                    updateTask(task.id, { title: val }, !task.title);
-                                                                                                                }
-                                                                                                                setInlineEditingId(null);
-                                                                                                            }
-                                                                                                            if (e.key === 'Tab') {
-                                                                                                                e.preventDefault();
-                                                                                                                const val = e.currentTarget.textContent?.trim();
-                                                                                                                if (val || task.title) {
-                                                                                                                    updateTask(task.id, { title: val || task.title }, !task.title);
-                                                                                                                    const newSubId = addTask({
-                                                                                                                        title: '',
-                                                                                                                        priority: Priority.Medium,
-                                                                                                                        parentId: task.id,
-                                                                                                                        listId: activeListId
-                                                                                                                    });
-                                                                                                                    setExpandedFolderIds(prev => new Set(prev).add(task.id));
-                                                                                                                    setTimeout(() => {
-                                                                                                                        setInlineEditingId(newSubId);
-                                                                                                                        setInlineEditText('');
-                                                                                                                     }, 100);
-                                                                                                                }
-                                                                                                            }
-                                                                                                            if (e.key === 'ArrowUp') {
-                                                                                                                e.preventDefault();
-                                                                                                                handleMoveTask(task.id, 'up');
-                                                                                                            }
-                                                                                                            if (e.key === 'ArrowDown') {
-                                                                                                                e.preventDefault();
-                                                                                                                handleMoveTask(task.id, 'down');
-                                                                                                            }
-                                                                                                            if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) {
-                                                                                                                e.preventDefault();
-                                                                                                                setInlineEditingId(null);
-                                                                                                                setTimeout(() => {
-                                                                                                                    document.dispatchEvent(new KeyboardEvent('keydown', {
-                                                                                                                        key: e.key,
-                                                                                                                        code: e.code,
-                                                                                                                        ctrlKey: e.ctrlKey,
-                                                                                                                        metaKey: e.metaKey,
-                                                                                                                        shiftKey: e.shiftKey,
-                                                                                                                        bubbles: true
-                                                                                                                    }));
-                                                                                                                }, 10);
-                                                                                                            }
-                                                                                                        }}
-                                                                                                        className="w-full text-sm font-medium leading-relaxed bg-transparent border-b border-indigo-400 outline-none text-gray-700 min-w-0 min-h-[1.5em] pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere"
-                                                                                                        onClick={e => e.stopPropagation()}
-                                                                                                        dir={task.title ? 'auto' : 'rtl'}
-                                                                                                        placeholder="مهمة جديدة"
-                                                                                                    />
-                                                                                                ) : (
-                                                                                                    <div className="flex items-start gap-1">
-                                                                                                        {(task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0) && (
-                                                                                                            <button
-                                                                                                                onClick={e => { e.stopPropagation(); toggleFolderExpand(e, task.id); }}
-                                                                                                                className={`p-0.5 text-gray-400 hover:text-gray-600 transition-transform duration-200 flex-shrink-0 mt-1 ${expandedFolderIds.has(task.id) ? 'rotate-0' : '-rotate-90'}`}
-                                                                                                            >
-                                                                                                                <Icons.ChevronDown size={12} />
-                                                                                                            </button>
-                                                                                                        )}
-                                                                                                        <div className="flex-1 min-w-0 flex items-start">
-                                                                                                            <span data-task-title dir="auto" className={`text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere cursor-text ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
-                                                                                                                {task.title || <span className="italic text-gray-300">بدون عنوان</span>}
-                                                                                                            </span>
-                                                                                                        </div>
-                                                                                                        {task.children && task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length > 0 && (
-                                                                                                            <span className="text-[10px] text-gray-400/40 border border-gray-200/40 px-1.5 rounded-full font-en" style={{ fontFamily: 'Acme' }}>{task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length}</span>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                )}
-
-                                                                                                {task.imageUrl && (
-                                                                                                    <div 
-                                                                                                        className="mt-2 rounded-lg overflow-hidden border border-gray-100/50 shadow-sm bg-gray-50 cursor-zoom-in group/img"
-                                                                                                        onClick={(e) => {
-                                                                                                            e.stopPropagation();
-                                                                                                            window.open(task.imageUrl, '_blank');
-                                                                                                        }}
-                                                                                                    >
-                                                                                                        <img 
-                                                                                                            src={task.imageUrl} 
-                                                                                                            alt="" 
-                                                                                                            className="w-full h-auto max-h-48 object-cover transition-transform duration-500 group-hover/img:scale-110" 
-                                                                                                            onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                                                                                                        />
-                                                                                                    </div>
-                                                                                                )}
-
-                                                                                                {/* Sub-tasks with decorative vertical line and hooks */}
-                                                                                                {task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0 && (
-                                                                                                    <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${expandedFolderIds.has(task.id) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
-                                                                                                        <div className="overflow-hidden">
-                                                                                                            <div className="flex flex-col gap-1.5 pr-[4px] mr-[9px] relative pb-1">
-                                                                                                        {/* Rounded "Quarter Square" connectors */}
-                                                                                                        <div className="absolute top-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-t-2 border-indigo-100 rounded-tr-md" />
-                                                                                                        <div className="absolute top-[10px] bottom-[10px] right-[-2px] border-r-2 border-indigo-100" />
-                                                                                                        <div className="absolute bottom-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-b-2 border-indigo-100 rounded-br-md" />
-                                                                                                        {task.children.filter((c: Task) => !c.isCompleted).map((child: Task) => (
-                                                                                                            <div
-                                                                                                                key={child.id}
-                                                                                                                className={`flex items-start gap-2 py-1.5 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
-                                                                                                                onClick={e => handleStartInlineEdit(e, child)}
-                                                                                                                onContextMenu={e => {
-                                                                                                                    e.preventDefault();
-                                                                                                                    setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: child.id, source: 'context' });
-                                                                                                                }}
-                                                                                                            >
-                                                                                                                <div className="w-1.5 flex-shrink-0" />
-                                                                                                                <button
-                                                                                                                    onClick={e => { e.stopPropagation(); handleCompleteInGroups(child.id); }}
-                                                                                                                    className={`w-3 h-3 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1.5 transition-all duration-300 ${child.isCompleted || completingTaskId === child.id ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'} ${completingTaskId === child.id ? 'scale-125' : ''}`}
-                                                                                                                >
-                                                                                                                    {(child.isCompleted || completingTaskId === child.id) && <Icons.Check size={6} className={`text-white ${completingTaskId === child.id ? 'animate-premium-check' : ''}`} strokeWidth={3} />}
-                                                                                                                </button>
-                                                                                                                {inlineEditingId === child.id ? (
-                                                                                                                    <div
-                                                                                                                        key={`inline-editor-${child.id}`}
-                                                                                                                        ref={inlineEditRef as any}
-                                                                                                                        data-inline-edit
-                                                                                                                        autoFocus
-                                                                                                                        contentEditable
-                                                                                                                        dir={child.title ? 'auto' : 'rtl'}
-                                                                                                                        onBlur={handleCommitInlineEdit}
-                                                                                                                        onKeyDown={e => {
-                                                                                                                            if (e.key === 'ArrowUp') {
-                                                                                                                                e.preventDefault();
-                                                                                                                                handleMoveTask(child.id, 'up');
-                                                                                                                            }
-                                                                                                                            if (e.key === 'ArrowDown') {
-                                                                                                                                e.preventDefault();
-                                                                                                                                handleMoveTask(child.id, 'down');
-                                                                                                                            }
-                                                                                                                            if (e.key === 'Enter') {
-                                                                                                                                if (e.shiftKey) return; // New line
-                                                                                                                                e.preventDefault();
-                                                                                                                                if (e.ctrlKey) {
-                                                                                                                                    const val = e.currentTarget.textContent?.trim();
-                                                                                                                                    if (!val && !child.title) { modifyTasks(prev => removeTaskById(prev, child.id)); setInlineEditingId(null); }
-                                                                                                                                    else {
-                                                                                                                                        updateTask(child.id, { title: val || child.title }, !child.title);
-                                                                                                                                        const newId = addTask({ title: '', priority: Priority.Medium, parentId: task.id, listId: activeListId });
-                                                                                                                                        setTimeout(() => { setInlineEditingId(newId); setInlineEditText(''); }, 50);
-                                                                                                                                    }
-                                                                                                                                } else {
-                                                                                                                                    handleCommitInlineEdit();
-                                                                                                                                }
-                                                                                                                            }
-                                                                                                                            if (e.key === 'Escape') {
-                                                                                                                                e.preventDefault();
-                                                                                                                                const val = e.currentTarget.textContent?.trim();
-                                                                                                                                if (!val && !child.title) modifyTasks(prev => removeTaskById(prev, child.id));
-                                                                                                                                else if (val) updateTask(child.id, { title: val }, !child.title);
-                                                                                                                                setInlineEditingId(null);
-                                                                                                                            }
-                                                                                                                        }}
-                                                                                                                        className="flex-1 text-xs bg-transparent border-b border-indigo-400 outline-none text-gray-600 min-w-0 min-h-[1.5em] pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed"
-                                                                                                                        onClick={e => e.stopPropagation()}
-                                                                                                                        placeholder="مهمة فرعية جديدة"
-                                                                                                                    />
-                                                                                                                ) : (
-                                                                                                                    <span dir="auto" className={`flex-1 text-xs leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${child.isCompleted ? 'line-through text-gray-300' : 'text-gray-500'}`}>
-                                                                                                                        {child.title || <span className="italic text-gray-300">مهمة فرعية جديدة</span>}
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        ))}
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    );
-                                                                                })
+                                                                                    } else {
+                                                                                        handleCommitInlineEdit();
+                                                                                    }
+                                                                                }
+                                                                                if (e.key === 'Escape') {
+                                                                                    e.preventDefault();
+                                                                                    const val = e.currentTarget.textContent?.trim();
+                                                                                    if (!val && !task.title) {
+                                                                                        modifyTasks(prev => removeTaskById(prev, task.id));
+                                                                                    } else if (val) {
+                                                                                        updateTask(task.id, { title: val }, !task.title);
+                                                                                    }
+                                                                                    setInlineEditingId(null);
+                                                                                }
+                                                                                if (e.key === 'Tab') {
+                                                                                    e.preventDefault();
+                                                                                    const val = e.currentTarget.textContent?.trim();
+                                                                                    if (val || task.title) {
+                                                                                        updateTask(task.id, { title: val || task.title }, !task.title);
+                                                                                        const newSubId = addTask({
+                                                                                            title: '',
+                                                                                            priority: Priority.Medium,
+                                                                                            parentId: task.id,
+                                                                                            listId: activeListId
+                                                                                        });
+                                                                                        setExpandedFolderIds(prev => new Set(prev).add(task.id));
+                                                                                        setTimeout(() => {
+                                                                                            setInlineEditingId(newSubId);
+                                                                                            setInlineEditText('');
+                                                                                        }, 100);
+                                                                                    }
+                                                                                }
+                                                                                if (e.key === 'ArrowUp') {
+                                                                                    e.preventDefault();
+                                                                                    handleMoveTask(task.id, 'up');
+                                                                                }
+                                                                                if (e.key === 'ArrowDown') {
+                                                                                    e.preventDefault();
+                                                                                    handleMoveTask(task.id, 'down');
+                                                                                }
+                                                                                if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) {
+                                                                                    e.preventDefault();
+                                                                                    setInlineEditingId(null);
+                                                                                    setTimeout(() => {
+                                                                                        document.dispatchEvent(new KeyboardEvent('keydown', {
+                                                                                            key: e.key,
+                                                                                            code: e.code,
+                                                                                            ctrlKey: e.ctrlKey,
+                                                                                            metaKey: e.metaKey,
+                                                                                            shiftKey: e.shiftKey,
+                                                                                            bubbles: true
+                                                                                        }));
+                                                                                    }, 10);
+                                                                                }
+                                                                            }}
+                                                                            className="w-full text-sm font-medium leading-relaxed bg-transparent border-b border-indigo-400 outline-none text-gray-700 min-w-0 min-h-[1.5em] pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere"
+                                                                            onClick={e => e.stopPropagation()}
+                                                                            dir={task.title ? 'auto' : 'rtl'}
+                                                                            placeholder="مهمة جديدة"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="flex items-start gap-1">
+                                                                            {(task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0) && (
+                                                                                <button
+                                                                                    onClick={e => { e.stopPropagation(); toggleFolderExpand(e, task.id); }}
+                                                                                    className={`p-0.5 text-gray-400 hover:text-gray-600 transition-transform duration-200 flex-shrink-0 mt-1 ${expandedFolderIds.has(task.id) ? 'rotate-0' : '-rotate-90'}`}
+                                                                                >
+                                                                                    <Icons.ChevronDown size={12} />
+                                                                                </button>
+                                                                            )}
+                                                                            <div className="flex-1 min-w-0 flex items-start">
+                                                                                <span data-task-title dir="auto" className={`text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere cursor-text ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
+                                                                                    {task.title || <span className="italic text-gray-300">بدون عنوان</span>}
+                                                                                </span>
+                                                                            </div>
+                                                                            {task.children && task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length > 0 && (
+                                                                                <span className="text-[10px] text-gray-400/40 border border-gray-200/40 px-1.5 rounded-full font-en" style={{ fontFamily: 'Acme' }}>{task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length}</span>
                                                                             )}
                                                                         </div>
-                                                                    </div>
+                                                                    )}
+
+                                                                    {task.imageUrl && (
+                                                                        <div
+                                                                            className="mt-2 rounded-lg overflow-hidden border border-gray-100/50 shadow-sm bg-gray-50 cursor-zoom-in group/img"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                window.open(task.imageUrl, '_blank');
+                                                                            }}
+                                                                        >
+                                                                            <img
+                                                                                src={task.imageUrl}
+                                                                                alt=""
+                                                                                className="w-full h-auto max-h-48 object-cover transition-transform duration-500 group-hover/img:scale-110"
+                                                                                onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Sub-tasks with decorative vertical line and hooks */}
+                                                                    {task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0 && (
+                                                                        <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${expandedFolderIds.has(task.id) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+                                                                            <div className="overflow-hidden">
+                                                                                <div className="flex flex-col gap-1.5 pr-[4px] mr-[9px] relative pb-1">
+                                                                                    {/* Rounded "Quarter Square" connectors */}
+                                                                                    <div className="absolute top-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-t-2 border-indigo-100 rounded-tr-md" />
+                                                                                    <div className="absolute top-[10px] bottom-[10px] right-[-2px] border-r-2 border-indigo-100" />
+                                                                                    <div className="absolute bottom-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-b-2 border-indigo-100 rounded-br-md" />
+                                                                                    {task.children.filter((c: Task) => !c.isCompleted).map((child: Task) => (
+                                                                                        <div
+                                                                                            key={child.id}
+                                                                                            className={`flex items-start gap-2 py-1.5 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
+                                                                                            onClick={e => handleStartInlineEdit(e, child)}
+                                                                                            onContextMenu={e => {
+                                                                                                e.preventDefault();
+                                                                                                setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: child.id, source: 'context' });
+                                                                                            }}
+                                                                                        >
+                                                                                            <div className="w-1.5 flex-shrink-0" />
+                                                                                            <button
+                                                                                                onClick={e => { e.stopPropagation(); handleCompleteInGroups(child.id); }}
+                                                                                                className={`w-3 h-3 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1.5 transition-all duration-300 ${child.isCompleted || completingTaskId === child.id ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'} ${completingTaskId === child.id ? 'scale-125' : ''}`}
+                                                                                            >
+                                                                                                {(child.isCompleted || completingTaskId === child.id) && <Icons.Check size={6} className={`text-white ${completingTaskId === child.id ? 'animate-premium-check' : ''}`} strokeWidth={3} />}
+                                                                                            </button>
+                                                                                            {inlineEditingId === child.id ? (
+                                                                                                <div
+                                                                                                    key={`inline-editor-${child.id}`}
+                                                                                                    ref={inlineEditRef as any}
+                                                                                                    data-inline-edit
+                                                                                                    autoFocus
+                                                                                                    contentEditable
+                                                                                                    dir={child.title ? 'auto' : 'rtl'}
+                                                                                                    onBlur={handleCommitInlineEdit}
+                                                                                                    onKeyDown={e => {
+                                                                                                        if (e.key === 'ArrowUp') {
+                                                                                                            e.preventDefault();
+                                                                                                            handleMoveTask(child.id, 'up');
+                                                                                                        }
+                                                                                                        if (e.key === 'ArrowDown') {
+                                                                                                            e.preventDefault();
+                                                                                                            handleMoveTask(child.id, 'down');
+                                                                                                        }
+                                                                                                        if (e.key === 'Enter') {
+                                                                                                            if (e.shiftKey) return; // New line
+                                                                                                            e.preventDefault();
+                                                                                                            if (e.ctrlKey) {
+                                                                                                                const val = e.currentTarget.textContent?.trim();
+                                                                                                                if (!val && !child.title) { modifyTasks(prev => removeTaskById(prev, child.id)); setInlineEditingId(null); }
+                                                                                                                else {
+                                                                                                                    updateTask(child.id, { title: val || child.title }, !child.title);
+                                                                                                                    const newId = addTask({ title: '', priority: Priority.Medium, parentId: task.id, listId: activeListId });
+                                                                                                                    setTimeout(() => { setInlineEditingId(newId); setInlineEditText(''); }, 50);
+                                                                                                                }
+                                                                                                            } else {
+                                                                                                                handleCommitInlineEdit();
+                                                                                                            }
+                                                                                                        }
+                                                                                                        if (e.key === 'Escape') {
+                                                                                                            e.preventDefault();
+                                                                                                            const val = e.currentTarget.textContent?.trim();
+                                                                                                            if (!val && !child.title) modifyTasks(prev => removeTaskById(prev, child.id));
+                                                                                                            else if (val) updateTask(child.id, { title: val }, !child.title);
+                                                                                                            setInlineEditingId(null);
+                                                                                                        }
+                                                                                                    }}
+                                                                                                    className="flex-1 text-xs bg-transparent border-b border-indigo-400 outline-none text-gray-600 min-w-0 min-h-[1.5em] pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed"
+                                                                                                    onClick={e => e.stopPropagation()}
+                                                                                                    placeholder="مهمة فرعية جديدة"
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <span dir="auto" className={`flex-1 text-xs leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${child.isCompleted ? 'line-through text-gray-300' : 'text-gray-500'}`}>
+                                                                                                    {child.title || <span className="italic text-gray-300">مهمة فرعية جديدة</span>}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                                </div>
-                                                            ));
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ));
 
                         })()}
                     </div>
@@ -5814,23 +5822,23 @@ export default function App() {
                                         const menuX = Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170));
                                         // Prefer left side: show to left unless there's not enough space (< 160px)
                                         const showToLeft = menuX > 160;
-                                        
+
                                         // Calculate dynamic top to align "قصاد العنوان"
                                         // Header (~31px) + P1 padding (4px) + P0.5 padding (2px) = 37px
-                                        let offsetTop = 37; 
-                                        
+                                        let offsetTop = 37;
+
                                         // If reorder options are present (source is trigger)
                                         if (contextMenu.taskId && contextMenu.source === 'trigger') {
                                             offsetTop += 34; // Height of reorder box + margin
                                         }
-                                        
+
                                         // If it's a folder, Add Task and Edit Name are present
                                         const isFolder = contextMenu.taskId && findTask(contextMenu.taskId, tasks)?.type === 'folder';
                                         if (isFolder) {
                                             offsetTop += 37; // "إضافة مهمة" height (with margin/border)
                                             offsetTop += 36; // "تعديل الاسم" height
                                         }
-                                        
+
                                         // Final position based on which submenu is active
                                         // Each item is ~36px tall
                                         const finalTop = activeSubmenu === 'priority' ? offsetTop : offsetTop + 36;
@@ -5879,9 +5887,9 @@ export default function App() {
                                         <div className="space-y-1 max-h-64 overflow-y-auto">
                                             {!moveTargetListId ? (
                                                 lists.map(l => (
-                                                    <button 
-                                                        key={l.id} 
-                                                        onClick={() => setMoveTargetListId(l.id)} 
+                                                    <button
+                                                        key={l.id}
+                                                        onClick={() => setMoveTargetListId(l.id)}
                                                         className={`w-full px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 flex items-center justify-between transition-colors ${activeListId === l.id ? 'bg-gray-50 opacity-60' : ''}`}
                                                     >
                                                         <div className="flex items-center gap-2">
@@ -5893,14 +5901,14 @@ export default function App() {
                                                 ))
                                             ) : (
                                                 <div className="animate-fadeIn">
-                                                    <button 
+                                                    <button
                                                         onClick={() => setMoveTargetListId(null)}
                                                         className="w-full px-3 py-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg flex items-center gap-1 mb-1 border-b border-indigo-50"
                                                     >
                                                         <Icons.ChevronRight size={12} />
                                                         <span>رجوع للقوائم</span>
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={() => {
                                                             if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, moveTargetListId);
                                                             setMoveTargetListId(null);
@@ -5911,8 +5919,8 @@ export default function App() {
                                                         <span>بدون مجموعة</span>
                                                     </button>
                                                     {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder').map(folder => (
-                                                        <button 
-                                                            key={folder.id} 
+                                                        <button
+                                                            key={folder.id}
                                                             onClick={() => {
                                                                 if (contextMenu.taskId) updateTask(contextMenu.taskId, { listId: moveTargetListId, parentId: folder.id });
                                                                 setContextMenu(prev => ({ ...prev, isOpen: false }));
@@ -6174,31 +6182,31 @@ export default function App() {
 
             {/* Update Notification Banner */}
             {
-                updateAvailable && (
-                    <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
-                        <div className="flex items-start gap-3">
-                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                                <span className="text-lg">📥</span>
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-sm font-bold text-gray-800">
-                                    تحديث جديد متاح {latestVersion ? `(v${latestVersion})` : ''}
-                                </h3>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    يتوفر إصدار أحدث. اضغط تحديث لتشغيل أداة التحديث والتثبيت التلقائي لجهازك.
-                                </p>
-                                <div className="mt-3 flex justify-end gap-2">
-                                    <button onClick={() => { setUpdateAvailable(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
-                                        إغلاق
-                                    </button>
-                                    <button onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
-                                        تحديث
-                                    </button>
+                    isUpdateBannerVisible && (
+                        <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                                    <span className="text-lg">📥</span>
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-gray-800">
+                                        تحديث جديد متاح {latestVersion ? `(v${latestVersion})` : ''}
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        يتوفر إصدار أحدث. اضغط تحديث لتشغيل أداة التحديث والتثبيت التلقائي لجهازك.
+                                    </p>
+                                    <div className="mt-3 flex justify-end gap-2">
+                                            <button onClick={dismissUpdateBanner} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
+                                                إغلاق
+                                            </button>
+                                            <button onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
+                                                تحديث
+                                            </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )
+                    )
             }
 
         </div >
