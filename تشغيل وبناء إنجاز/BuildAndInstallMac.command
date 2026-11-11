@@ -12,9 +12,20 @@ installed_app="/Applications/$app_name"
 stage_app="/Applications/.$app_name.new"
 old_app="/Applications/.$app_name.old"
 
-if [[ -e "$stage_app" || -e "$old_app" ]]; then
-  echo "A previous installation is still being finalized. Close Injaz and try again."
-  exit 1
+# Clean up any leftover temporary files from a previous run automatically.
+if [[ -e "$stage_app" ]]; then
+  echo "Cleaning up previous staging app..."
+  rm -rf "$stage_app"
+fi
+
+if [[ -e "$old_app" ]]; then
+  if [[ ! -e "$installed_app" ]]; then
+    echo "Restoring previous installation..."
+    mv "$old_app" "$installed_app"
+  else
+    echo "Cleaning up previous backup app..."
+    osascript -e 'tell application "Finder" to delete POSIX file "'"$old_app"'"' >/dev/null 2>&1 || rm -rf "$old_app"
+  fi
 fi
 
 # Close any running copy of Injaz (installed or dev preview) first.
@@ -55,7 +66,7 @@ fi
 
 # Finder deletion is recoverable: it moves the old application to the Trash.
 if [[ -e "$old_app" ]]; then
-  osascript -e 'tell application "Finder" to delete POSIX file "/Applications/.injaz---advanced-task-manager.app.old"' || true
+  osascript -e 'tell application "Finder" to delete POSIX file "'"$old_app"'"' >/dev/null 2>&1 || rm -rf "$old_app"
 fi
 
 env -u ELECTRON_RUN_AS_NODE open "$installed_app"
