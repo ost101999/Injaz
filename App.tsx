@@ -47,15 +47,25 @@ export default function App() {
         ipc.send('check-for-updates');
     };
 
+    const handleStartUpdate = () => {
+        const ipc = (window as any).require?.('electron')?.ipcRenderer;
+        if (!ipc) {
+            alert('التحديث متاح في تطبيق سطح المكتب فقط');
+            return;
+        }
+        setUpdateAvailable(false);
+        ipc.send('trigger-app-update');
+    };
+
     const handleBellClick = () => {
         const ipc = (window as any).require?.('electron')?.ipcRenderer;
         
         if (updateAvailable) {
-            if (confirm('سيتم فتح صفحة الإصدار لتنزيل النسخة المناسبة لجهازك. هل تريد المتابعة؟')) {
-                ipc?.send('open-update-page');
+            if (confirm(`يتوفر إصدار أحدث (${latestVersion ? `v${latestVersion}` : ''}). هل تريد تشغيل أداة التحديث والبناء لجهازك الآن؟`)) {
+                handleStartUpdate();
             }
         } else if (updateStatus === 'error') {
-            alert('حدث خطأ أثناء التحديث: ' + updateErrorMsg);
+            alert('حدث خطأ أثناء فحص التحديث: ' + updateErrorMsg);
         } else if (updateStatus === 'checking') {
             alert('جاري البحث عن تحديثات...');
         } else {
@@ -4423,8 +4433,8 @@ export default function App() {
                                                     {updateStatus === 'idle' && 'تحقق يدويًا متى أردت معرفة ما إذا كان هذا الجهاز يحتاج تحديثًا.'}
                                                 </p>
                                                 {updateStatus === 'available' && (
-                                                    <button type="button" onClick={handleBellClick} className="px-3 py-2 border border-indigo-200 text-indigo-700 rounded text-sm font-bold">
-                                                        تنزيل الإصدار {latestVersion ? `v${latestVersion}` : 'الجديد'}
+                                                    <button type="button" onClick={handleStartUpdate} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold transition">
+                                                        تحديث الآن {latestVersion ? `(v${latestVersion})` : ''}
                                                     </button>
                                                 )}
                                                 {lastUpdateCheck && <p className="text-[11px] text-gray-400">آخر فحص: {new Date(lastUpdateCheck).toLocaleString('ar-EG')}</p>}
@@ -6145,17 +6155,17 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                                 <h3 className="text-sm font-bold text-gray-800">
-                                    تحديث جديد متاح
+                                    تحديث جديد متاح {latestVersion ? `(v${latestVersion})` : ''}
                                 </h3>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    يتوفر إصدار أحدث. افتح صفحة الإصدار لتنزيل النسخة المناسبة لجهازك.
+                                    يتوفر إصدار أحدث. اضغط تحديث لتشغيل أداة التحديث والتثبيت التلقائي لجهازك.
                                 </p>
                                 <div className="mt-3 flex justify-end gap-2">
                                     <button onClick={() => { setUpdateAvailable(false); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
                                         إغلاق
                                     </button>
-                                    <button onClick={handleBellClick} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
-                                        فتح صفحة التحديث
+                                    <button onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
+                                        تحديث
                                     </button>
                                 </div>
                             </div>
