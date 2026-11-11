@@ -60,3 +60,50 @@ fi
 
 env -u ELECTRON_RUN_AS_NODE open "$installed_app"
 echo "Installed and opened: $installed_app"
+
+# Build and install succeeded: close this Terminal window automatically.
+# (Reached only on success; any failure above exits early with `set -e`, leaving the window open for the error.)
+sleep 2
+tty_name="$(tty 2>/dev/null || true)"
+if [[ -n "$tty_name" && "$tty_name" != "not a tty" ]]; then
+  (
+    sleep 1
+    osascript - "$tty_name" >/dev/null 2>&1 <<'APPLESCRIPT'
+on run argv
+  set myTTY to item 1 of argv
+  tell application "Terminal"
+    -- 1) Close the window that ran this script (matched by its tab's tty).
+    repeat with w in (every window)
+      try
+        repeat with t in (tabs of w)
+          if (tty of t) is myTTY then
+            close w saving no
+            exit repeat
+          end if
+        end repeat
+      end try
+    end repeat
+    delay 0.5
+    -- 2) Terminal opens an extra blank "Last login..." window when it is launched by a .command file;
+    --    close it too if it is idle and still empty.
+    repeat with w in (every window)
+      try
+        set t to selected tab of w
+        if (busy of t) is false then
+          set c to contents of t
+          if c starts with "Last login" then
+            set n to (do shell script "printf %s " & quoted form of c & " | grep -c '[^[:space:]]' || true") as integer
+            if n <= 2 then close w saving no
+          end if
+        end if
+      end try
+    end repeat
+    -- 3) Nothing left open: quit Terminal.
+    if (count of windows) is 0 then quit
+  end tell
+end run
+APPLESCRIPT
+  ) &
+  disown
+fi
+exit 0
