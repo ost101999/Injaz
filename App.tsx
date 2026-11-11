@@ -94,6 +94,14 @@ export default function App() {
 
     // --- SETTINGS STATE ---
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    // Window size in "zoomed" CSS px (body zoom scales layout, so innerWidth/innerHeight must be divided by zoom).
+    // Used to keep the settings panel fully visible whatever the window size / zoom is.
+    const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
+    useEffect(() => {
+        const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
     const [isReordering, setIsReordering] = useState(false);
     const [folderActionPromptId, setFolderActionPromptId] = useState<string | null>(null);
     const [settingsTab, setSettingsTab] = useState<'general' | 'appearance' | 'shortcuts' | 'behavior' | 'habits'>('appearance');
@@ -3917,11 +3925,16 @@ export default function App() {
                     {isSettingsOpen && (
                         <div
                             data-settings-panel
-                            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[440px] bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-fadeIn z-[70] origin-top"
+                            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-fadeIn z-[70] origin-top flex flex-col"
+                            style={{
+                                // Smart sizing: never wider/taller than the visible window (compensating for body zoom)
+                                width: Math.max(260, Math.min(440, viewport.w / preferences.zoom - 16)),
+                                maxHeight: Math.max(160, viewport.h / preferences.zoom - 64 - 16),
+                            }}
                         >
                             {/* Header Tabs */}
                             <div 
-                                className="flex border-b border-gray-100 bg-gray-50/50"
+                                className="flex shrink-0 overflow-x-auto whitespace-nowrap border-b border-gray-100 bg-gray-50/50"
                                 onWheel={(e) => {
                                     const tabs: any[] = ['appearance', 'general', 'shortcuts', 'behavior', 'habits', 'connections'];
                                     const currentIndex = tabs.indexOf(settingsTab);
@@ -3972,7 +3985,7 @@ export default function App() {
                                 </button>
                             </div>
 
-                            <div className="px-6 py-3 space-y-3 max-h-[65vh] overflow-y-auto overflow-x-hidden">
+                            <div className="px-6 py-3 space-y-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
                                 {settingsTab === 'general' && (
                                     <div className="space-y-3 animate-fadeIn">
                                         {/* Data Actions */}
