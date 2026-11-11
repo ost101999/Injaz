@@ -119,31 +119,86 @@ function isVersionNewer(candidate: string, current: string) {
     return false;
 }
 
-async function fetchLatestReleaseCandidate(headers: Record<string, string>): Promise<{ version: string; url: string } | null> {
+type UpdateCandidate = { version: string; url: string };
+type UpdateCache = {
+    releaseEtag?: string;
+    commitsEtag?: string;
+    release?: UpdateCandidate | null;
+    branch?: UpdateCandidate | null;
+    checkedAt?: number;
+    rateLimitedUntil?: number;
+};
+type UpdateFetchOutcome =
+    | { kind: 'ok'; candidate: UpdateCandidate | null; etag?: string }
+    | { kind: 'not-modified' }
+    | { kind: 'rate-limited'; resetAt?: number }
+    | { kind: 'error' };
+
+// GitHub's unauthenticated API allows only 60 requests/hour per IP. To avoid hitting that limit
+// (which made "check for updates" fail), results are cached on disk, requests are conditional
+// (ETag -> 304 responses don't count against the limit), and automatic checks are throttled.
+const AUTO_UPDATE_CHECK_MIN_INTERVAL_MS = 30 * 60 * 1000;
+const updateCacheFile = () => path.join(app.getPath('userData'), 'update-cache.json');
+
+function readUpdateCache(): UpdateCache {
     try {
-        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/releases/latest', {
-            headers,
-            signal: AbortSignal.timeout(15000)
-        });
-        if (!response.ok) return null;
-        const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
-        if (typeof release.tag_name !== 'string') return null;
-        const url = typeof release.html_url === 'string' && release.html_url.startsWith('https://github.com/ost101999/Injaz/releases/')
-            ? release.html_url
-            : 'https://github.com/ost101999/Injaz/releases/latest';
-        return { version: release.tag_name.replace(/^v/i, ''), url };
+        return JSON.parse(fs.readFileSync(updateCacheFile(), 'utf8')) as UpdateCache;
     } catch {
-        return null;
+        return {};
     }
 }
 
-async function fetchMainBranchCommitCandidate(headers: Record<string, string>): Promise<{ version: string; url: string } | null> {
+function writeUpdateCache(cache: UpdateCache) {
     try {
-        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/commits?sha=main&per_page=1', {
-            headers,
+        fs.writeFileSync(updateCacheFile(), JSON.stringify(cache));
+    } catch {
+        // Cache is only an optimization
+    }
+}
+
+function pickBestCandidate(...candidates: Array<UpdateCandidate | null | undefined>): UpdateCandidate | null {
+    let best: UpdateCandidate | null = null;
+    for (const candidate of candidates) {
+        if (candidate && (!best || isVersionNewer(candidate.version, best.version))) best = candidate;
+    }
+    return best;
+}
+
+function readRateLimitReset(response: Response): number | undefined {
+    const reset = Number(response.headers.get('x-ratelimit-reset'));
+    return Number.isFinite(reset) && reset > 0 ? reset * 1000 : undefined;
+}
+
+async function fetchLatestReleaseCandidate(headers: Record<string, string>, etag?: string): Promise<UpdateFetchOutcome> {
+    try {
+        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/releases/latest', {
+            headers: etag ? { ...headers, 'If-None-Match': etag } : headers,
             signal: AbortSignal.timeout(15000)
         });
-        if (!response.ok) return null;
+        if (response.status === 304) return { kind: 'not-modified' };
+        if (response.status === 403 || response.status === 429) return { kind: 'rate-limited', resetAt: readRateLimitReset(response) };
+        if (response.status === 404) return { kind: 'ok', candidate: null }; // no release published yet
+        if (!response.ok) return { kind: 'error' };
+        const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
+        if (typeof release.tag_name !== 'string') return { kind: 'ok', candidate: null };
+        const url = typeof release.html_url === 'string' && release.html_url.startsWith('https://github.com/ost101999/Injaz/releases/')
+            ? release.html_url
+            : 'https://github.com/ost101999/Injaz/releases/latest';
+        return { kind: 'ok', candidate: { version: release.tag_name.replace(/^v/i, ''), url }, etag: response.headers.get('etag') || undefined };
+    } catch {
+        return { kind: 'error' };
+    }
+}
+
+async function fetchMainBranchCommitCandidate(headers: Record<string, string>, etag?: string): Promise<UpdateFetchOutcome> {
+    try {
+        const response = await fetch('https://api.github.com/repos/ost101999/Injaz/commits?sha=main&per_page=1', {
+            headers: etag ? { ...headers, 'If-None-Match': etag } : headers,
+            signal: AbortSignal.timeout(15000)
+        });
+        if (response.status === 304) return { kind: 'not-modified' };
+        if (response.status === 403 || response.status === 429) return { kind: 'rate-limited', resetAt: readRateLimitReset(response) };
+        if (!response.ok) return { kind: 'error' };
         const linkHeader = response.headers.get('link') || '';
         const lastPageMatch = linkHeader.match(/[?&]page=(\d+)>;\s*rel="last"/i);
         let commitCount = lastPageMatch ? Number.parseInt(lastPageMatch[1], 10) : 0;
@@ -151,50 +206,104 @@ async function fetchMainBranchCommitCandidate(headers: Record<string, string>): 
             const commits = await response.json() as unknown[];
             commitCount = Array.isArray(commits) ? commits.length : 0;
         }
-        if (!Number.isFinite(commitCount) || commitCount <= 0) return null;
+        if (!Number.isFinite(commitCount) || commitCount <= 0) return { kind: 'ok', candidate: null };
         const baseParts = getCurrentAppVersion().split('.');
         const major = Number.parseInt(baseParts[0], 10) || 0;
         const minor = Number.parseInt(baseParts[1], 10) || 0;
         return {
-            version: `${major}.${minor}.${commitCount}`,
-            url: 'https://github.com/ost101999/Injaz/commits/main'
+            kind: 'ok',
+            candidate: { version: `${major}.${minor}.${commitCount}`, url: 'https://github.com/ost101999/Injaz/commits/main' },
+            etag: response.headers.get('etag') || undefined
         };
     } catch {
-        return null;
+        return { kind: 'error' };
     }
 }
 
-async function checkForUpdates() {
+function reportUpdateResult(best: UpdateCandidate) {
+    latestReleaseUrl = best.url;
+    if (isVersionNewer(best.version, getCurrentAppVersion())) {
+        mainWindow?.webContents.send('update_available', { version: best.version });
+    } else {
+        mainWindow?.webContents.send('update_not_available', { version: best.version });
+    }
+}
+
+function rateLimitMessage(resetAt?: number) {
+    const when = resetAt ? new Date(resetAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : null;
+    return when
+        ? `وصل GitHub إلى حد الطلبات المؤقت من هذا الجهاز. جرّب مرة أخرى بعد الساعة ${when}.`
+        : 'وصل GitHub إلى حد الطلبات المؤقت من هذا الجهاز. جرّب مرة أخرى بعد قليل.';
+}
+
+async function checkForUpdates(manual = false) {
     if (updateCheckInProgress) return;
 
     updateCheckInProgress = true;
     mainWindow?.webContents.send('checking_for_update');
     try {
+        const now = Date.now();
+        const cache = readUpdateCache();
+        const cachedBest = pickBestCandidate(cache.release, cache.branch);
+
+        // Skip the network when a recent result exists (automatic checks) or while GitHub is rate-limiting us.
+        const recentlyChecked = !manual && cache.checkedAt && now - cache.checkedAt < AUTO_UPDATE_CHECK_MIN_INTERVAL_MS;
+        const stillRateLimited = !!cache.rateLimitedUntil && cache.rateLimitedUntil > now;
+        if (cachedBest && (recentlyChecked || stillRateLimited)) {
+            reportUpdateResult(cachedBest);
+            return;
+        }
+        if (!cachedBest && stillRateLimited) {
+            throw new Error(rateLimitMessage(cache.rateLimitedUntil));
+        }
+
         const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Injaz-Task-Manager' };
-        const [releaseCandidate, branchCandidate] = await Promise.all([
-            fetchLatestReleaseCandidate(headers),
-            fetchMainBranchCommitCandidate(headers)
+        const [releaseOutcome, branchOutcome] = await Promise.all([
+            fetchLatestReleaseCandidate(headers, cache.releaseEtag),
+            fetchMainBranchCommitCandidate(headers, cache.commitsEtag)
         ]);
 
-        let bestCandidate = releaseCandidate;
-        if (branchCandidate && (!bestCandidate || isVersionNewer(branchCandidate.version, bestCandidate.version))) {
-            bestCandidate = branchCandidate;
+        let gotFresh = false;
+        let rateLimitedUntil: number | undefined;
+        let sawRateLimit = false;
+
+        if (releaseOutcome.kind === 'ok') {
+            cache.release = releaseOutcome.candidate;
+            cache.releaseEtag = releaseOutcome.etag;
+            gotFresh = true;
+        } else if (releaseOutcome.kind === 'not-modified') {
+            gotFresh = true;
+        } else if (releaseOutcome.kind === 'rate-limited') {
+            sawRateLimit = true;
+            rateLimitedUntil = releaseOutcome.resetAt;
         }
 
-        if (!bestCandidate) {
-            throw new Error('Could not resolve latest version from GitHub');
+        if (branchOutcome.kind === 'ok') {
+            cache.branch = branchOutcome.candidate;
+            cache.commitsEtag = branchOutcome.etag;
+            gotFresh = true;
+        } else if (branchOutcome.kind === 'not-modified') {
+            gotFresh = true;
+        } else if (branchOutcome.kind === 'rate-limited') {
+            sawRateLimit = true;
+            rateLimitedUntil = branchOutcome.resetAt ?? rateLimitedUntil;
         }
 
-        latestReleaseUrl = bestCandidate.url;
-        const currentVersion = getCurrentAppVersion();
+        if (gotFresh) cache.checkedAt = now;
+        cache.rateLimitedUntil = sawRateLimit ? (rateLimitedUntil ?? now + 15 * 60 * 1000) : undefined;
+        writeUpdateCache(cache);
 
-        if (isVersionNewer(bestCandidate.version, currentVersion)) {
-            mainWindow?.webContents.send('update_available', { version: bestCandidate.version });
-        } else {
-            mainWindow?.webContents.send('update_not_available', { version: bestCandidate.version });
+        // Fall back to the last known result when GitHub can't be reached right now
+        const best = pickBestCandidate(cache.release, cache.branch);
+        if (!best) {
+            throw new Error(sawRateLimit
+                ? rateLimitMessage(cache.rateLimitedUntil)
+                : 'تعذّر الاتصال بصفحة الإصدارات. تحقق من الإنترنت وحاول مرة أخرى.');
         }
-    } catch {
-        mainWindow?.webContents.send('update_error', 'تعذّر الاتصال بصفحة الإصدارات. تحقق من الإنترنت وحاول مرة أخرى.');
+        reportUpdateResult(best);
+    } catch (error) {
+        const message = error instanceof Error && error.message ? error.message : 'تعذّر الاتصال بصفحة الإصدارات. تحقق من الإنترنت وحاول مرة أخرى.';
+        mainWindow?.webContents.send('update_error', message);
     } finally {
         updateCheckInProgress = false;
     }
@@ -645,8 +754,8 @@ if (!gotTheLock) {
         void shell.openExternal(latestReleaseUrl);
     });
 
-    ipcMain.on('check-for-updates', () => {
-        checkForUpdates();
+    ipcMain.on('check-for-updates', (_event, options?: { manual?: boolean }) => {
+        void checkForUpdates(!!options?.manual);
     });
 
     ipcMain.handle('app-version', () => ({
