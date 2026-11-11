@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
-import { flattenTasks, markGoogleChanges, acknowledgeGoogleWrite, mergeGoogleTasks, uploadGoogleChanges, googleListFolderId } from '../google/sync.mjs';
+import { detachGoogleTasksMovedOutside, flattenTasks, markGoogleChanges, acknowledgeGoogleWrite, mergeGoogleTasks, uploadGoogleChanges, googleListFolderId } from '../google/sync.mjs';
 
 const task = (extra = {}) => ({ id: 'local', title: 'New task', type: 'item', children: [], isCompleted: false, parentId: 'google_main_folder', ...extra });
 const folder = children => task({ id: 'google_main_folder', title: 'مهام جوجل', type: 'folder', isGoogleSynced: true, parentId: null, children });
@@ -156,6 +156,46 @@ test('edit during create is preserved and retried as update rather than duplicat
         return true;
     } });
     assert.equal(find(tasks).googleSyncPending, false);
+});
+
+test('moving out of Google detaches the local copy and queues the remote task and subtasks for deletion', () => {
+    const child = local({ id: 'child', googleTaskId: 'child-remote', parentId: 'local' });
+    const previous = [folder([local({ children: [child] })])];
+    const localGroup = task({ id: 'local-group', type: 'folder', parentId: null, children: [] });
+    const moved = { ...previous[0].children[0], parentId: 'local-group' };
+    const { tasks, deletions } = detachGoogleTasksMovedOutside(previous, [{ ...localGroup, children: [moved] }]);
+    assert.deepEqual(deletions, [
+        { taskId: 'remote', listId: 'second-list' },
+        { taskId: 'child-remote', listId: 'second-list' }
+    ]);
+    assert.equal(find(tasks).isGoogleSynced, undefined);
+    assert.equal(find(tasks).googleTaskId, undefined);
+    assert.equal(find(tasks, 'child').isGoogleSynced, undefined);
+    const afterPull = mergeGoogleTasks(tasks, [], 'default');
+    assert.equal(find(afterPull).title, 'New task');
+});
+
+test('moving between Google parents does not detach or delete the task', () => {
+    const previous = [folder([local()])];
+    const next = [folder([local({ parentId: 'another-google-parent' })])];
+    const result = detachGoogleTasksMovedOutside(previous, next);
+    assert.deepEqual(result.deletions, []);
+    assert.equal(find(result.tasks).googleTaskId, 'remote');
+});
+
+test('queued move-out deletion survives offline and is acknowledged before the next pull', async () => {
+    let deletions = [{ taskId: 'remote', listId: 'second-list' }];
+    const tasks = [task({ id: 'local-copy', parentId: null })];
+    const options = {
+        getTasks: () => tasks, apply: () => {}, tokens: {}, isCurrent: () => true,
+        getDeletions: () => deletions, applyDeletions: update => { deletions = update(deletions); }
+    };
+    await assert.rejects(uploadGoogleChanges({ ...options, invoke: async () => { throw new Error('offline'); } }), /offline/);
+    assert.deepEqual(deletions, [{ taskId: 'remote', listId: 'second-list' }]);
+    const calls = [];
+    await uploadGoogleChanges({ ...options, invoke: async (name, data) => { calls.push({ name, ...data }); return true; } });
+    assert.deepEqual(calls, [{ name: 'google-tasks:delete-task', tokens: {}, listId: 'second-list', taskId: 'remote' }]);
+    assert.deepEqual(deletions, []);
 });
 
 // Execute the actual Electron handlers with a fake API (no account/network access).

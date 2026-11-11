@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit } from './types';
+import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit, GoogleTaskDeletion } from './types';
 import { Icons } from './components/Icons';
 import { GoogleMark } from './components/GoogleMark';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
 import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
-import { flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
+import { detachGoogleTasksMovedOutside, flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -151,6 +151,18 @@ export default function App() {
     googleAccountRef.current = JSON.stringify(googleTokens);
     const googleDefaultListRef = useRef<string | undefined>(undefined);
     googleDefaultListRef.current = googleSelectedListIds[0] || googleListId || '@default';
+    const [googlePendingDeletions, setGooglePendingDeletions] = useState<GoogleTaskDeletion[]>(() => {
+        const saved = localStorage.getItem('injaz_google_pending_deletions');
+        return saved ? JSON.parse(saved) : [];
+    });
+    const googlePendingDeletionsRef = useRef<GoogleTaskDeletion[]>([]);
+    googlePendingDeletionsRef.current = googlePendingDeletions;
+    const applyGoogleDeletions = useCallback((update: (current: GoogleTaskDeletion[]) => GoogleTaskDeletion[]) => {
+        const next = update(googlePendingDeletionsRef.current);
+        googlePendingDeletionsRef.current = next;
+        localStorage.setItem('injaz_google_pending_deletions', JSON.stringify(next));
+        setGooglePendingDeletions(next);
+    }, []);
 
     // --- SMART CLOUD FILE SYNC STATE ---
     const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState<boolean>(() => {
@@ -305,6 +317,7 @@ export default function App() {
         try {
             await uploadGoogleChanges({
                 getTasks: () => tasksRef.current, apply: applyGoogleState,
+                getDeletions: () => googlePendingDeletionsRef.current, applyDeletions: applyGoogleDeletions,
                 invoke: (name, data) => ipc.invoke(name, data), tokens,
                 isCurrent: () => googleAccountRef.current === account
             });
@@ -344,7 +357,7 @@ export default function App() {
                 setTimeout(() => googleSyncRunnerRef.current?.(), 0);
             }
         }
-    }, [googleTokens, googleSelectedListIds, googleListId, googleContext, lists, applyGoogleState]);
+    }, [googleTokens, googleSelectedListIds, googleListId, googleContext, lists, applyGoogleState, applyGoogleDeletions]);
     googleSyncRunnerRef.current = () => { void syncGoogleTasks(); };
 
     const initialSyncDone = useRef(false);
@@ -406,7 +419,17 @@ export default function App() {
     const modifyTasks = useCallback((newTasksOrFn: Task[] | ((prev: Task[]) => Task[]), merge = false) => {
         setTasks(prev => {
             const changed = typeof newTasksOrFn === 'function' ? newTasksOrFn(prev) : newTasksOrFn;
-            const next = changed === prev ? prev : markGoogleChanges(prev, changed, googleDefaultListRef.current);
+            const detached = changed === prev ? { tasks: changed, deletions: [] } : detachGoogleTasksMovedOutside(prev, changed);
+            if (detached.deletions.length > 0) {
+                const deletions = detached.deletions;
+                // Persist outside React's updater; StrictMode replays are deduplicated by remote ID.
+                queueMicrotask(() => applyGoogleDeletions(current => {
+                    const queued = new Map(current.map(item => [`${item.listId}\0${item.taskId}`, item]));
+                    deletions.forEach(item => queued.set(`${item.listId}\0${item.taskId}`, item));
+                    return [...queued.values()];
+                }));
+            }
+            const next = changed === prev ? prev : markGoogleChanges(prev, detached.tasks, googleDefaultListRef.current);
             if (next !== prev) {
                 if (!merge) {
                     undoStackRef.current = [...undoStackRef.current, { type: 'tasks', state: prev }];
@@ -416,7 +439,7 @@ export default function App() {
             }
             return next;
         });
-    }, []);
+    }, [applyGoogleDeletions]);
 
     // Wrapper to set habits and save to unified undo stack
     const modifyHabits = useCallback((newHabitsOrFn: Habit[] | ((prev: Habit[]) => Habit[])) => {
@@ -843,12 +866,12 @@ export default function App() {
 
     useEffect(() => {
         if (!googleTokens || isSyncingGoogle || googleSyncError) return;
-        const pending = flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' &&
+        const pending = googlePendingDeletions.length > 0 || flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' &&
             (t.googleSyncPending || !t.googleTaskId) && t.title.trim());
         if (!pending) return;
         const timer = setTimeout(() => { void syncGoogleTasks(); }, 500);
         return () => clearTimeout(timer);
-    }, [tasks, googleTokens, syncGoogleTasks, isSyncingGoogle, googleSyncError]);
+    }, [tasks, googleTokens, syncGoogleTasks, isSyncingGoogle, googleSyncError, googlePendingDeletions]);
     const [inlineEditText, setInlineEditText] = useState('');
     const cancelInlineEdit = useCallback(() => {
         setInlineEditingId(null);
@@ -4403,7 +4426,7 @@ export default function App() {
                                             {googleTokens && (
                                                 <>
                                                     {googleSyncError && <p role="alert" className="text-xs text-red-700 bg-red-50 p-2 rounded-lg">{googleSyncError}</p>}
-                                                    {flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' && (t.googleSyncPending || !t.googleTaskId) && t.title.trim()) && (
+                                                    {(googlePendingDeletions.length > 0 || flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' && (t.googleSyncPending || !t.googleTaskId) && t.title.trim())) && (
                                                         <p className="text-xs text-amber-700">توجد تغييرات محفوظة على الجهاز تنتظر المزامنة مع جوجل.</p>
                                                     )}
 

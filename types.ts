@@ -19,6 +19,11 @@ export interface TaskList {
   themeColor?: string;
 }
 
+export interface GoogleTaskDeletion {
+  taskId: string;
+  listId: string;
+}
+
 export interface Task {
   id: string;
   title: string;
