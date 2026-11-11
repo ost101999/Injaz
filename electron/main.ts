@@ -1514,6 +1514,20 @@ if (!gotTheLock) {
         }
     });
 
+    ipcMain.handle('google-tasks:delete-task', async (event, { tokens, taskId, listId }) => {
+        try {
+            oauth2Client.setCredentials(tokens);
+            const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
+            await tasksApi.tasks.delete({ tasklist: listId || '@default', task: taskId });
+            return true;
+        } catch (error: any) {
+            // The task may already have been deleted or moved in Google Tasks.
+            if (error?.code === 404 || error?.status === 404) return true;
+            console.error('[Google Tasks] Delete Error:', error);
+            throw new Error('تعذر حذف المهمة من جوجل');
+        }
+    });
+
     ipcMain.handle('google-tasks:create-task', async (event, { tokens, listId, title, parentId, completed }) => {
         try {
             oauth2Client.setCredentials(tokens);

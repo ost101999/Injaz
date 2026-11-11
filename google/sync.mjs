@@ -27,6 +27,30 @@ export function markGoogleChanges(previous, next, defaultListId) {
     return next.map(task => visit(task, null));
 }
 
+// Moving a linked task outside every Google parent makes it a local task.
+// Return remote IDs separately so the caller can persist their deletion before pulling.
+export function detachGoogleTasksMovedOutside(previous, next) {
+    const before = new Map(flattenTasks(previous).map(t => [t.id, t]));
+    const deletions = [];
+    function detach(task) {
+        if (task.googleTaskId && task.googleListId) {
+            deletions.push({ taskId: task.googleTaskId, listId: task.googleListId });
+        }
+        const { googleTaskId, googleListId, isGoogleSynced, isGoogleListFolder,
+            googleSyncPending, googleSyncRevision, ...local } = task;
+        return { ...local, children: (task.children || []).map(detach) };
+    }
+    function visit(task, parent) {
+        const old = before.get(task.id);
+        const insideGoogle = parent?.isGoogleSynced || parent?.id === GOOGLE_FOLDER_ID;
+        const result = old?.type === 'item' && old.isGoogleSynced && !insideGoogle ? detach(task) : {
+            ...task, children: (task.children || []).map(child => visit(child, task))
+        };
+        return result;
+    }
+    return { tasks: next.map(task => visit(task, null)), deletions };
+}
+
 export function acknowledgeGoogleWrite(tasks, sent, googleTaskId) {
     return tasks.map(task => task.id === sent.id ? {
         ...task, googleTaskId, googleListId: sent.googleListId,
@@ -130,7 +154,23 @@ export function mergeGoogleTasks(previous, remote, targetListId, googleLists = [
 
 // Upload parents before children. Read the latest state after each acknowledgement
 // so edits made while an earlier request was in flight are not lost.
-export async function uploadGoogleChanges({ getTasks, apply, invoke, tokens, isCurrent }) {
+export async function uploadGoogleChanges({ getTasks, apply, invoke, tokens, isCurrent,
+    getDeletions = () => [], applyDeletions = () => {} }) {
+    const activeRemote = new Set(flattenTasks(getTasks()).filter(t => t.isGoogleSynced && t.googleTaskId)
+        .map(t => remoteKey(t.googleListId, t.googleTaskId)));
+    for (const deletion of getDeletions()) {
+        if (!isCurrent()) return;
+        const key = remoteKey(deletion.listId, deletion.taskId);
+        // Undo may have restored the task into Google before this queue was sent.
+        if (!activeRemote.has(key)) {
+            const ok = await invoke('google-tasks:delete-task', {
+                tokens, listId: deletion.listId, taskId: deletion.taskId
+            });
+            if (!ok) throw new Error('لم يؤكد جوجل حذف المهمة');
+        }
+        if (!isCurrent()) return;
+        applyDeletions(current => current.filter(item => remoteKey(item.listId, item.taskId) !== key));
+    }
     const pending = flattenTasks(getTasks()).filter(t => t.type === 'item' && t.isGoogleSynced &&
         (t.googleSyncPending || !t.googleTaskId) && t.title.trim());
     for (const entry of pending) {
