@@ -4477,79 +4477,79 @@ export default function App() {
 
                                             <FirebaseSyncPanel sync={firebaseSync} />
 
-                                            {/* Cloud File Sync */}
-                                            <div>
-                                                <h4 className="text-[13px] text-gray-500 font-bold mb-3">المزامنة السحابية الذكية (Smart Cloud Sync)</h4>
-                                                <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-4 shadow-sm">
-                                                    <div className="flex items-center justify-between">
-                                                        <div>
-                                                            <p className="text-sm font-bold text-gray-700">مزامنة تلقائية للملفات</p>
-                                                            <p className="text-[11px] text-gray-400">حفظ وتحديث المهام تلقائياً عبر سحابتك الخاصة</p>
-                                                        </div>
-                                                        <label className="relative inline-flex items-center cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isCloudSyncEnabled}
-                                                                disabled={firebaseSync.connected}
-                                                                onChange={(e) => {
-                                                                    const enabled = e.target.checked;
-                                                                    if (enabled && !syncFilePath) {
-                                                                        alert('يرجى تحديد مسار ملف المزامنة أولاً.');
-                                                                        return;
-                                                                    }
-                                                                    setIsCloudSyncEnabled(enabled);
-                                                                    if (enabled) {
-                                                                        setNotification({ message: 'تم تفعيل المزامنة السحابية!', type: 'success' });
-                                                                    } else {
-                                                                        setNotification({ message: 'تم إيقاف المزامنة السحابية.', type: 'success' });
-                                                                    }
-                                                                }}
-                                                                className="sr-only peer"
-                                                            />
-                                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                        </label>
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <p className="text-xs font-bold text-gray-500">مسار ملف المزامنة:</p>
-                                                        <div className="flex gap-2">
-                                                            <input
-                                                                type="text"
-                                                                readOnly
-                                                                placeholder="اختر ملفاً في Google Drive أو iCloud أو Dropbox..."
-                                                                value={syncFilePath || ''}
-                                                                className="flex-1 p-2 border border-gray-200 rounded-lg text-[11px] bg-gray-50 font-mono text-gray-600 truncate"
-                                                            />
-                                                            <button
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                                                        if (ipc) {
-                                                                            const filePath = await ipc.invoke('select-sync-file');
-                                                                            if (filePath) {
-                                                                                setSyncFilePath(filePath);
-                                                                                setNotification({ message: 'تم تحديد ملف المزامنة بنجاح!', type: 'success' });
-                                                                            }
+                                                {/* Cloud File Sync — hidden: Firebase sync replaces it. Set to true to bring the section back. */}
+                                                {false && (<div>
+                                                    <h4 className="text-[13px] text-gray-500 font-bold mb-3">المزامنة السحابية الذكية (Smart Cloud Sync)</h4>
+                                                    <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-4 shadow-sm">
+                                                        <div className="flex items-center justify-between">
+                                                            <div>
+                                                                <p className="text-sm font-bold text-gray-700">مزامنة تلقائية للملفات</p>
+                                                                <p className="text-[11px] text-gray-400">حفظ وتحديث المهام تلقائياً عبر سحابتك الخاصة</p>
+                                                            </div>
+                                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isCloudSyncEnabled}
+                                                                    disabled={firebaseSync.connected}
+                                                                    onChange={(e) => {
+                                                                        const enabled = e.target.checked;
+                                                                        if (enabled && !syncFilePath) {
+                                                                            alert('يرجى تحديد مسار ملف المزامنة أولاً.');
+                                                                            return;
                                                                         }
-                                                                    } catch (err) {
-                                                                        console.error('Failed to select sync file:', err);
-                                                                    }
-                                                                }}
-                                                                className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs rounded-lg transition animate-pulse"
-                                                            >
-                                                                تحديد الملف
-                                                            </button>
+                                                                        setIsCloudSyncEnabled(enabled);
+                                                                        if (enabled) {
+                                                                            setNotification({ message: 'تم تفعيل المزامنة السحابية!', type: 'success' });
+                                                                        } else {
+                                                                            setNotification({ message: 'تم إيقاف المزامنة السحابية.', type: 'success' });
+                                                                        }
+                                                                    }}
+                                                                    className="sr-only peer"
+                                                                />
+                                                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                            </label>
                                                         </div>
-                                                    </div>
 
-                                                    {isCloudSyncEnabled && syncFilePath && (
-                                                        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px] text-gray-400">
-                                                            <span>الحالة: متصل بالملف ومزامن</span>
-                                                            <span>آخر مزامنة: {lastSyncTime > 0 ? new Date(lastSyncTime).toLocaleTimeString() : 'لا يوجد'}</span>
+                                                        <div className="space-y-2">
+                                                            <p className="text-xs font-bold text-gray-500">مسار ملف المزامنة:</p>
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    readOnly
+                                                                    placeholder="اختر ملفاً في Google Drive أو iCloud أو Dropbox..."
+                                                                    value={syncFilePath || ''}
+                                                                    className="flex-1 p-2 border border-gray-200 rounded-lg text-[11px] bg-gray-50 font-mono text-gray-600 truncate"
+                                                                />
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            const ipc = (window as any).require?.('electron')?.ipcRenderer;
+                                                                            if (ipc) {
+                                                                                const filePath = await ipc.invoke('select-sync-file');
+                                                                                if (filePath) {
+                                                                                    setSyncFilePath(filePath);
+                                                                                    setNotification({ message: 'تم تحديد ملف المزامنة بنجاح!', type: 'success' });
+                                                                                }
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error('Failed to select sync file:', err);
+                                                                        }
+                                                                    }}
+                                                                    className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs rounded-lg transition animate-pulse"
+                                                                >
+                                                                    تحديد الملف
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            </div>
+
+                                                        {isCloudSyncEnabled && syncFilePath && (
+                                                            <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+                                                                <span>الحالة: متصل بالملف ومزامن</span>
+                                                                <span>آخر مزامنة: {lastSyncTime > 0 ? new Date(lastSyncTime).toLocaleTimeString() : 'لا يوجد'}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                            </div>)}
                                         </div>
                                     </div>
                                 )}
@@ -6182,31 +6182,31 @@ export default function App() {
 
             {/* Update Notification Banner */}
             {
-                    isUpdateBannerVisible && (
-                        <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
-                            <div className="flex items-start gap-3">
-                                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                                    <span className="text-lg">📥</span>
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="text-sm font-bold text-gray-800">
-                                        تحديث جديد متاح {latestVersion ? `(v${latestVersion})` : ''}
-                                    </h3>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        يتوفر إصدار أحدث. اضغط تحديث لتشغيل أداة التحديث والتثبيت التلقائي لجهازك.
-                                    </p>
-                                    <div className="mt-3 flex justify-end gap-2">
-                                            <button onClick={dismissUpdateBanner} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
-                                                إغلاق
-                                            </button>
-                                            <button onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
-                                                تحديث
-                                            </button>
-                                    </div>
+                isUpdateBannerVisible && (
+                    <div className="fixed bottom-4 left-4 z-[2000] bg-white rounded-xl shadow-2xl p-4 max-w-sm w-full border border-gray-100 animate-slideUp" dir="rtl">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                                <span className="text-lg">📥</span>
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-sm font-bold text-gray-800">
+                                    تحديث جديد متاح {latestVersion ? `(v${latestVersion})` : ''}
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    يتوفر إصدار أحدث. اضغط تحديث لتشغيل أداة التحديث والتثبيت التلقائي لجهازك.
+                                </p>
+                                <div className="mt-3 flex justify-end gap-2">
+                                    <button onClick={dismissUpdateBanner} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold transition">
+                                        إغلاق
+                                    </button>
+                                    <button onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">
+                                        تحديث
+                                    </button>
                                 </div>
                             </div>
                         </div>
-                    )
+                    </div>
+                )
             }
 
         </div >
