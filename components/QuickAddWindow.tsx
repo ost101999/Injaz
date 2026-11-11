@@ -248,21 +248,50 @@ export const QuickAddWindow = () => {
         }
     }, [expandedFolderId, hoveredListId]);
 
-    // Sort folders: Non-empty ones stay at the top. Empty ones below them.
-    // Within each group, sort by lastActivityAt descending (most recent activity first).
+    // Sort folders: Non-empty ones stay at the top, empty ones below them.
+    // Within each group the stored (manually reorderable) order is kept.
     const sortedFolders = React.useMemo(() => {
         const nonEmptyFolders = folders.filter(f => (f as any).taskCount > 0);
         const emptyFolders = folders.filter(f => !(f as any).taskCount || (f as any).taskCount === 0);
-        
-        // Sort both groups by lastActivityAt descending (most recent first)
-        const sortByActivity = (a: any, b: any) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0);
-        
-        emptyFolders.sort(sortByActivity);
-        nonEmptyFolders.sort(sortByActivity);
-        
-        // Non-empty folders at the top, then recently active empty ones
         return [...nonEmptyFolders, ...emptyFolders];
     }, [folders]);
+
+    // Drag & drop reordering of folders
+    const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
+    const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+
+    const handleFolderDrop = async (targetId: string) => {
+        // Insert the dragged folder *after* the target to match visual drop‑below behavior.
+        // This simple fix treats every drop as "place below" the target folder.
+        // For a more precise placement (top/middle/bottom) a dropPosition state would be needed.
+        const sourceId = draggedFolderId;
+        setDraggedFolderId(null);
+        setDragOverFolderId(null);
+        if (!sourceId || sourceId === targetId || !ipcRenderer || !hoveredListId) return;
+        const next = [...sortedFolders];
+        const from = next.findIndex(f => f.id === sourceId);
+        const to = next.findIndex(f => f.id === targetId);
+        if (from < 0 || to < 0) return;
+        const [moved] = next.splice(from, 1);
+        // Insert after the target index (to). If dropping at the end, to may be the last index.
+        const insertIdx = to + 1;
+        next.splice(insertIdx, 0, moved);
+        setFolders(next);
+        await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
+    };
+        const sourceId = draggedFolderId;
+        setDraggedFolderId(null);
+        setDragOverFolderId(null);
+        if (!sourceId || sourceId === targetId || !ipcRenderer || !hoveredListId) return;
+        const next = [...sortedFolders];
+        const from = next.findIndex(f => f.id === sourceId);
+        const to = next.findIndex(f => f.id === targetId);
+        if (from < 0 || to < 0) return;
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        setFolders(next);
+        await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
+    };
 
     // --- COPY HANDLER (Images) ---
     const handleCopy = (e: React.ClipboardEvent) => {
@@ -1497,7 +1526,12 @@ export const QuickAddWindow = () => {
                                         <div key={folder.id} className="flex flex-col">
                                             {/* Folder Item */}
                                             <div
-                                                className={`px-3 py-2 text-sm cursor-pointer transition-colors flex items-center justify-between ${isSelected && !isExpanded ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                                                draggable
+                                                onDragStart={(e) => { setDraggedFolderId(folder.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', folder.id); }}
+                                                onDragOver={(e) => { e.preventDefault(); if (draggedFolderId && dragOverFolderId !== folder.id) setDragOverFolderId(folder.id); }}
+                                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFolderDrop(folder.id); }}
+                                                onDragEnd={() => { setDraggedFolderId(null); setDragOverFolderId(null); }}
+                                                className={`px-3 py-2 text-sm cursor-pointer transition-colors flex items-center justify-between ${draggedFolderId === folder.id ? 'opacity-40' : ''} ${dragOverFolderId === folder.id && draggedFolderId !== folder.id ? 'border-t-2 border-indigo-500' : ''} ${isSelected && !isExpanded ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
                                                 onContextMenu={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();

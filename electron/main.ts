@@ -793,6 +793,36 @@ if (!gotTheLock) {
         return [];
     });
 
+    // Quick Note: persist a manual folder order (same order the main Groups view uses in custom sort mode)
+    ipcMain.handle('reorder-folders', async (event, { listId, orderedIds }: { listId: string; orderedIds: string[] }) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            await mainWindow.webContents.executeJavaScript(`
+                (function() {
+                    const listId = ${JSON.stringify(listId)};
+                    const orderedIds = ${JSON.stringify(orderedIds)};
+                    const tasks = JSON.parse(localStorage.getItem('injaz_tasks') || '[]');
+                    const byId = new Map(tasks.map(t => [t.id, t]));
+                    const isTarget = t => t.type === 'folder' && t.parentId === null && t.listId === listId;
+                    const queue = orderedIds.map(id => byId.get(id)).filter(t => t && isTarget(t));
+                    // Folders not mentioned keep their relative order after the listed ones
+                    const rest = tasks.filter(t => isTarget(t) && !orderedIds.includes(t.id));
+                    const ordered = [...queue, ...rest];
+                    let i = 0;
+                    const result = tasks.map(t => isTarget(t) ? ordered[i++] : t);
+                    localStorage.setItem('injaz_tasks', JSON.stringify(result));
+                    localStorage.setItem('injaz_sort_by', 'custom');
+                })()
+            `);
+            BrowserWindow.getAllWindows().forEach(win => {
+                if (!win.isDestroyed() && win.webContents !== event.sender) {
+                    win.webContents.send('data-updated', 'tasks');
+                }
+            });
+            return true;
+        }
+        return false;
+    });
+
     // Quick Task Addition: Add task to a specific list (optionally inside a folder)
     ipcMain.handle('add-task-to-list', async (event, { listId, title, parentId, priority, initialSubtaskTitle }) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
