@@ -52,7 +52,7 @@ export default function App() {
         }
         setUpdateStatus('checking');
         setUpdateErrorMsg('');
-        ipc.send('check-for-updates');
+        ipc.send('check-for-updates', { manual: true });
     };
 
     const handleStartUpdate = () => {
