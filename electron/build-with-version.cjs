@@ -25,6 +25,20 @@ function computeVersion() {
     return pkg.version || '0.0.10';
 }
 
+const fs = require('fs');
+
+// Record the current project root so the installed app can locate its local build tool
+try {
+    const distElectronDir = path.resolve(__dirname, '..', 'dist-electron');
+    if (!fs.existsSync(distElectronDir)) {
+        fs.mkdirSync(distElectronDir, { recursive: true });
+    }
+    const metaFile = path.join(distElectronDir, 'project-meta.json');
+    fs.writeFileSync(metaFile, JSON.stringify({ projectRoot: path.resolve(__dirname, '..') }, null, 2), 'utf8');
+} catch {
+    // Ignore meta writing errors
+}
+
 if (process.argv.includes('--print-version')) {
     process.stdout.write(computeVersion());
     process.exit(0);

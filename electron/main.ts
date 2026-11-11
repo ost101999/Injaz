@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, screen, shell, dialog, safeStorage } from 'electron';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import path from 'path';
 import * as fs from 'fs';
 import { google } from 'googleapis';
@@ -542,6 +542,103 @@ if (!gotTheLock) {
 
     ipcMain.on('app-quit', () => {
         quitApp();
+    });
+
+    function findBuildScript(): { type: 'mac' | 'win'; targetPath: string } | null {
+        const userDataRootFile = path.join(app.getPath('userData'), 'project-root.txt');
+        let customRoot = '';
+        try {
+            if (fs.existsSync(userDataRootFile)) {
+                customRoot = fs.readFileSync(userDataRootFile, 'utf8').trim();
+            }
+        } catch {}
+
+        let metaRoot = '';
+        try {
+            const metaFile = path.join(__dirname, 'project-meta.json');
+            if (fs.existsSync(metaFile)) {
+                metaRoot = JSON.parse(fs.readFileSync(metaFile, 'utf8')).projectRoot || '';
+            }
+        } catch {}
+
+        const candidates = [
+            customRoot,
+            metaRoot,
+            path.resolve(__dirname, '..'),
+            process.platform === 'darwin' ? '/Users/omarsherif/My Apps/Injaz' : 'C:\\My App\\injaz v2',
+            path.join(app.getPath('home'), 'My Apps', 'Injaz'),
+            'C:\\My App\\injaz v2',
+            'C:\\My Apps\\Injaz',
+            path.join(process.env.SystemDrive || 'C:', 'My App', 'injaz v2'),
+            path.join(app.getPath('home'), 'My Apps', 'injaz v2'),
+        ].filter(Boolean);
+
+        for (const root of candidates) {
+            try {
+                if (!fs.existsSync(root)) continue;
+
+                if (process.platform === 'darwin') {
+                    const macScript = path.join(root, 'تشغيل وبناء إنجاز', 'BuildAndInstallMac.command');
+                    if (fs.existsSync(macScript)) {
+                        return { type: 'mac', targetPath: macScript };
+                    }
+                } else {
+                    const winLnk = path.join(root, 'تشغيل وبناء إنجاز', '2 - بناء نسخة جديدة.lnk');
+                    if (fs.existsSync(winLnk)) {
+                        return { type: 'win', targetPath: winLnk };
+                    }
+                    const winPs1 = path.join(root, 'تشغيل وبناء إنجاز', 'Build.ps1');
+                    if (fs.existsSync(winPs1)) {
+                        return { type: 'win', targetPath: winPs1 };
+                    }
+                }
+            } catch {}
+        }
+
+        return null;
+    }
+
+    ipcMain.on('trigger-app-update', async () => {
+        let scriptInfo = findBuildScript();
+
+        if (!scriptInfo && mainWindow && !mainWindow.isDestroyed()) {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                title: 'حدد مجلد مشروع إنجاز أو أداة البناء',
+                properties: ['openDirectory', 'openFile'],
+                message: 'يرجى تحديد مجلد مشروع إنجاز للبدء في التحديث والتثبيت.'
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                const chosen = result.filePaths[0];
+                let rootCandidate = chosen;
+                try {
+                    if (fs.statSync(chosen).isFile()) {
+                        rootCandidate = path.dirname(path.dirname(chosen));
+                    }
+                    fs.writeFileSync(path.join(app.getPath('userData'), 'project-root.txt'), rootCandidate, 'utf8');
+                } catch {}
+                scriptInfo = findBuildScript();
+            }
+        }
+
+        if (scriptInfo) {
+            if (scriptInfo.type === 'mac') {
+                const child = spawn('open', [scriptInfo.targetPath], { detached: true, stdio: 'ignore' });
+                child.unref();
+            } else {
+                if (scriptInfo.targetPath.endsWith('.lnk')) {
+                    void shell.openPath(scriptInfo.targetPath);
+                } else {
+                    const child = spawn('cmd.exe', ['/c', 'start', 'powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', scriptInfo.targetPath], {
+                        detached: true,
+                        stdio: 'ignore'
+                    });
+                    child.unref();
+                }
+            }
+        } else {
+            void shell.openExternal(latestReleaseUrl);
+        }
     });
 
     ipcMain.on('open-update-page', () => {
