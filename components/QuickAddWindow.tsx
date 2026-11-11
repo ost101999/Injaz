@@ -284,26 +284,101 @@ export const QuickAddWindow = () => {
         await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
     }, [reorderingFolderId, hoveredListId, sortedFolders]);
 
+    // Global keyboard handler when popup is open so navigation & type-to-select work even after clicking/dragging in the popup
     useEffect(() => {
-        if (!reorderingFolderId) return;
-        const onWindowKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                e.stopPropagation();
-                moveFolderByKeyboard(-1);
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                e.stopPropagation();
-                moveFolderByKeyboard(1);
-            } else if (e.key === 'Escape' || e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                setReorderingFolderId(null);
+        if (!showListPopup || isCreatingList || isCreatingFolder) return;
+
+        const onPopupKeyDown = (e: KeyboardEvent) => {
+            // Reordering mode takes top priority
+            if (reorderingFolderId) {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    moveFolderByKeyboard(-1);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    moveFolderByKeyboard(1);
+                } else if (e.key === 'Escape' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setReorderingFolderId(null);
+                    inputRef.current?.focus();
+                }
+                return;
+            }
+
+            // If focus is inside the editor, handleKeyDown will handle normal keys except type-to-select in folders
+            const isEditorFocused = document.activeElement === inputRef.current;
+
+            // Type-to-select (الأحرف): jump to matching folder (or list if folder popup isn't open)
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== '+') {
+                const char = e.key.toLowerCase();
+                if (showFolderPopup && sortedFolders.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Search starting after current selection so repeated presses cycle through matches
+                    const start = (selectedFolderIndex + 1) % sortedFolders.length;
+                    let matchIdx = -1;
+                    for (let i = 0; i < sortedFolders.length; i++) {
+                        const idx = (start + i) % sortedFolders.length;
+                        if (sortedFolders[idx].title.trim().toLowerCase().startsWith(char)) {
+                            matchIdx = idx;
+                            break;
+                        }
+                    }
+                    if (matchIdx === -1) {
+                        matchIdx = sortedFolders.findIndex(f => f.title.toLowerCase().includes(char));
+                    }
+                    if (matchIdx !== -1) {
+                        setSelectedFolderIndex(matchIdx);
+                        setHoveredFolderId(sortedFolders[matchIdx].id);
+                    }
+                    return;
+                } else if (lists.length > 0) {
+                    const start = (selectedIndex + 1) % lists.length;
+                    let matchIdx = -1;
+                    for (let i = 0; i < lists.length; i++) {
+                        const idx = (start + i) % lists.length;
+                        if (lists[idx].title.trim().toLowerCase().startsWith(char)) {
+                            matchIdx = idx;
+                            break;
+                        }
+                    }
+                    if (matchIdx !== -1) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedIndex(matchIdx);
+                        setHoveredListId(lists[matchIdx].id);
+                        return;
+                    }
+                }
+            }
+
+            // If editor does NOT have focus (e.g. user clicked or dragged a folder), handle Arrow / Enter / Escape keys globally
+            if (!isEditorFocused) {
+                if (showFolderPopup && sortedFolders.length > 0) {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedFolderIndex(prev => Math.min(prev + 1, sortedFolders.length - 1)); return; }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedFolderIndex(prev => Math.max(prev - 1, -1)); return; }
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); setShowFolderPopup(false); inputRef.current?.focus(); return; }
+                    if (e.key === 'ArrowRight' && selectedFolderIndex >= 0) { e.preventDefault(); setHoveredFolderId(sortedFolders[selectedFolderIndex].id); return; }
+                    if (e.key === 'Enter') { e.preventDefault(); const parentId = selectedFolderIndex >= 0 ? sortedFolders[selectedFolderIndex].id : null; addTaskToList(hoveredListId!, parentId); return; }
+                    if (e.key === '+') { e.preventDefault(); setIsCreatingFolder(true); setNewFolderName(''); return; }
+                    if (e.key === 'Escape') { e.preventDefault(); setShowFolderPopup(false); inputRef.current?.focus(); return; }
+                } else if (showListPopup) {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex(prev => Math.min(prev + 1, lists.length - 1)); return; }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex(prev => Math.max(prev - 1, 0)); return; }
+                    if (e.key === 'ArrowRight' && lists[selectedIndex]) { e.preventDefault(); setHoveredListId(lists[selectedIndex].id); return; }
+                    if (e.key === 'Enter') { e.preventDefault(); if (lists[selectedIndex]) { if (showFolderPopup && selectedFolderIndex >= 0) { addTaskToList(lists[selectedIndex].id, sortedFolders[selectedFolderIndex].id); } else { addTaskToList(lists[selectedIndex].id); } } return; }
+                    if (e.key === '+') { e.preventDefault(); setIsCreatingList(true); setNewListName(''); return; }
+                    if (e.key === 'Escape') { e.preventDefault(); setShowListPopup(false); setHoveredListId(null); inputRef.current?.focus(); return; }
+                }
             }
         };
-        window.addEventListener('keydown', onWindowKeyDown, true);
-        return () => window.removeEventListener('keydown', onWindowKeyDown, true);
-    }, [reorderingFolderId, moveFolderByKeyboard]);
+
+        window.addEventListener('keydown', onPopupKeyDown, true);
+        return () => window.removeEventListener('keydown', onPopupKeyDown, true);
+    }, [showListPopup, showFolderPopup, isCreatingList, isCreatingFolder, reorderingFolderId, moveFolderByKeyboard, sortedFolders, selectedFolderIndex, lists, selectedIndex, hoveredListId]);
 
     const handleFolderDrop = async (fallbackTargetId?: string) => {
         const sourceId = dragRef.current.sourceId || draggedFolderId;
@@ -538,7 +613,7 @@ export const QuickAddWindow = () => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex(prev => Math.min(prev + 1, lists.length - 1)); return; }
             if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex(prev => Math.max(prev - 1, 0)); return; }
             if (e.key === 'ArrowRight' && lists[selectedIndex]) { e.preventDefault(); setHoveredListId(lists[selectedIndex].id); return; }
-            if (e.key === 'Enter') { e.preventDefault(); if (lists[selectedIndex]) { if (showFolderPopup && selectedFolderIndex >= 0) { addTaskToList(lists[selectedIndex].id, folders[selectedFolderIndex].id); } else { addTaskToList(lists[selectedIndex].id); } } return; }
+            if (e.key === 'Enter') { e.preventDefault(); if (lists[selectedIndex]) { if (showFolderPopup && selectedFolderIndex >= 0) { addTaskToList(lists[selectedIndex].id, sortedFolders[selectedFolderIndex].id); } else { addTaskToList(lists[selectedIndex].id); } } return; }
             if (e.key === '+') { e.preventDefault(); setIsCreatingList(true); setNewListName(''); return; }
             if (e.key === 'Escape') { e.preventDefault(); setShowListPopup(false); setHoveredListId(null); inputRef.current?.focus(); return; }
             if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
