@@ -81,7 +81,7 @@ export const QuickAddWindow = () => {
         ipcRenderer.on('show-quick-note', handleShow);
         ipcRenderer.on('hide-quick-note', handleHide);
         ipcRenderer.on('request-clear-and-close', handleClearAndClose);
-        
+
         const handleBroadcastSync = (_: any, type: string) => {
             // When main window changes something, we might need to refresh lists/folders
             if (showListPopup) {
@@ -123,6 +123,7 @@ export const QuickAddWindow = () => {
                 setExpandedFolderId(null);
                 setSavedSelection(null);
                 setFolderContextMenu(null);
+                setReorderingFolderId(null);
             }
         }
     };
@@ -228,11 +229,13 @@ export const QuickAddWindow = () => {
                 setSelectedFolderIndex(-1);
                 setShowFolderPopup(fetchedFolders && fetchedFolders.length > 0);
                 setExpandedFolderId(null);
+                setReorderingFolderId(null);
             });
         } else if (hoveredListId === null) {
             setFolders([]);
             setShowFolderPopup(false);
             setExpandedFolderId(null);
+            setReorderingFolderId(null);
         }
     }, [hoveredListId]);
 
@@ -256,42 +259,78 @@ export const QuickAddWindow = () => {
         return [...nonEmptyFolders, ...emptyFolders];
     }, [folders]);
 
-    // Drag & drop reordering of folders
+    // Drag & drop & keyboard reordering of folders
     const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
     const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+    const [dropPosition, setDropPosition] = useState<'top' | 'bottom'>('top');
+    const [reorderingFolderId, setReorderingFolderId] = useState<string | null>(null);
+    const dragRef = useRef<{ sourceId: string | null; targetId: string | null; pos: 'top' | 'bottom' }>({
+        sourceId: null,
+        targetId: null,
+        pos: 'top'
+    });
 
-    const handleFolderDrop = async (targetId: string) => {
-        // Insert the dragged folder *after* the target to match visual drop‑below behavior.
-        // This simple fix treats every drop as "place below" the target folder.
-        // For a more precise placement (top/middle/bottom) a dropPosition state would be needed.
-        const sourceId = draggedFolderId;
+    const moveFolderByKeyboard = React.useCallback(async (dir: -1 | 1) => {
+        if (!reorderingFolderId || !hoveredListId || !ipcRenderer) return;
+        const next = [...sortedFolders];
+        const idx = next.findIndex(f => f.id === reorderingFolderId);
+        if (idx < 0) return;
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= next.length) return;
+        const [moved] = next.splice(idx, 1);
+        next.splice(newIdx, 0, moved);
+        setFolders(next);
+        setSelectedFolderIndex(newIdx);
+        await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
+    }, [reorderingFolderId, hoveredListId, sortedFolders]);
+
+    useEffect(() => {
+        if (!reorderingFolderId) return;
+        const onWindowKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                e.stopPropagation();
+                moveFolderByKeyboard(-1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                e.stopPropagation();
+                moveFolderByKeyboard(1);
+            } else if (e.key === 'Escape' || e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                setReorderingFolderId(null);
+            }
+        };
+        window.addEventListener('keydown', onWindowKeyDown, true);
+        return () => window.removeEventListener('keydown', onWindowKeyDown, true);
+    }, [reorderingFolderId, moveFolderByKeyboard]);
+
+    const handleFolderDrop = async (fallbackTargetId?: string) => {
+        const sourceId = dragRef.current.sourceId || draggedFolderId;
+        const targetId = dragRef.current.targetId || fallbackTargetId || dragOverFolderId;
+        const pos = dragRef.current.pos || dropPosition;
+
+        dragRef.current = { sourceId: null, targetId: null, pos: 'top' };
         setDraggedFolderId(null);
         setDragOverFolderId(null);
-        if (!sourceId || sourceId === targetId || !ipcRenderer || !hoveredListId) return;
+
+        if (!sourceId || !targetId || sourceId === targetId || !ipcRenderer || !hoveredListId) return;
+
         const next = [...sortedFolders];
         const from = next.findIndex(f => f.id === sourceId);
-        const to = next.findIndex(f => f.id === targetId);
-        if (from < 0 || to < 0) return;
+        if (from < 0) return;
         const [moved] = next.splice(from, 1);
-        // Insert after the target index (to). If dropping at the end, to may be the last index.
-        const insertIdx = to + 1;
+
+        // Find target index in the remaining array after removing the dragged item
+        const to = next.findIndex(f => f.id === targetId);
+        if (to < 0) return;
+
+        const insertIdx = pos === 'bottom' ? to + 1 : to;
         next.splice(insertIdx, 0, moved);
         setFolders(next);
         await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
     };
-        const sourceId = draggedFolderId;
-        setDraggedFolderId(null);
-        setDragOverFolderId(null);
-        if (!sourceId || sourceId === targetId || !ipcRenderer || !hoveredListId) return;
-        const next = [...sortedFolders];
-        const from = next.findIndex(f => f.id === sourceId);
-        const to = next.findIndex(f => f.id === targetId);
-        if (from < 0 || to < 0) return;
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        setFolders(next);
-        await ipcRenderer.invoke('reorder-folders', { listId: hoveredListId, orderedIds: next.map(f => f.id) });
-    };
+
 
     // --- COPY HANDLER (Images) ---
     const handleCopy = (e: React.ClipboardEvent) => {
@@ -366,7 +405,7 @@ export const QuickAddWindow = () => {
 
         if (html || plainText) {
             e.preventDefault();
-            
+
             let contentToInsert = '';
 
             if (html) {
@@ -379,8 +418,8 @@ export const QuickAddWindow = () => {
                         const el = node as HTMLElement;
                         const tag = el.tagName.toLowerCase();
                         const style = el.getAttribute('style') || '';
-                        const isBold = style.includes('font-weight: bold') || style.includes('font-weight: 700') || 
-                                       tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700';
+                        const isBold = style.includes('font-weight: bold') || style.includes('font-weight: 700') ||
+                            tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700';
                         const isItalic = tag === 'i' || tag === 'em' || style.includes('font-style: italic');
                         const isUnderline = tag === 'u' || style.includes('text-decoration: underline');
                         let innerContent = '';
@@ -402,7 +441,7 @@ export const QuickAddWindow = () => {
 
                 let rawContent = '';
                 doc.body.childNodes.forEach(child => { rawContent += cleanNode(child); });
-                
+
                 // Split by our marker and filter out empty segments from double breaks
                 const lines = rawContent.split('|LINE_BREAK|').filter(l => l !== '');
                 if (lines.length > 0) {
@@ -410,7 +449,7 @@ export const QuickAddWindow = () => {
                     // Insert first line content at cursor, then insert other lines as siblings
                     const firstLineHtml = lines[0];
                     document.execCommand('insertHTML', false, firstLineHtml);
-                    
+
                     if (lines.length > 1) {
                         // For simplicity in this complex contentEditable, 
                         // we can generate a temporary fragment of divs and insert it.
@@ -746,7 +785,7 @@ export const QuickAddWindow = () => {
             // Actually, inserting a div with a br inside is standard.
 
             e.preventDefault();
-            
+
             const sel = window.getSelection();
             if (!sel || sel.rangeCount === 0) return;
             const range = sel.getRangeAt(0);
@@ -782,7 +821,7 @@ export const QuickAddWindow = () => {
                 // If we are at the end of the line or in the middle, we should ideally split.
                 // But for a "Quick Note", inserting after is often sufficient if they are at the end.
                 // To be robust, let's just use insertNode but ensure we are NOT nesting.
-                
+
                 // If we are INSIDE a div, we want to insert the new div AFTER it.
                 currentLine.parentNode?.insertBefore(newLine, currentLine.nextSibling);
             } else {
@@ -799,7 +838,7 @@ export const QuickAddWindow = () => {
 
             // Smooth scroll to caret if needed
             newLine.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            
+
             return;
         }
 
@@ -1514,24 +1553,96 @@ export const QuickAddWindow = () => {
                                 // Only close folder popup itself if needed
                             }}>
                             <div className="px-3 py-2 text-xs font-bold text-gray-500 border-b border-gray-100">📁 المجموعات</div>
-                            <div className="flex-1 overflow-auto custom-scrollbar">
+                            <div
+                                className="flex-1 overflow-auto custom-scrollbar"
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleFolderDrop();
+                                }}
+                            >
                                 {/* Root option removed as requested */}
                                 {sortedFolders.map((folder, index) => {
                                     const isExpanded = expandedFolderId === folder.id;
                                     const isSelected = selectedFolderIndex === index;
+                                    const isReordering = reorderingFolderId === folder.id;
                                     // Show sub-tasks only if: this folder is the expanded one AND expansion data exists
                                     const hasParentTasks = isExpanded && parentTasks.length > 0;
+                                    const isDragTarget = dragOverFolderId === folder.id && draggedFolderId && draggedFolderId !== folder.id;
 
                                     return (
-                                        <div key={folder.id} className="flex flex-col">
+                                        <div
+                                            key={folder.id}
+                                            className="flex flex-col relative select-none"
+                                            draggable
+                                            onDragStart={(e) => {
+                                                dragRef.current = { sourceId: folder.id, targetId: null, pos: 'top' };
+                                                setDraggedFolderId(folder.id);
+                                                e.dataTransfer.effectAllowed = 'move';
+                                                e.dataTransfer.setData('text/plain', folder.id);
+                                            }}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                e.dataTransfer.dropEffect = 'move';
+                                                const activeSource = dragRef.current.sourceId || draggedFolderId;
+                                                if (!activeSource || activeSource === folder.id) return;
+                                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                                const pos: 'top' | 'bottom' = (e.clientY - rect.top) < rect.height / 2 ? 'top' : 'bottom';
+                                                dragRef.current.targetId = folder.id;
+                                                dragRef.current.pos = pos;
+                                                if (dragOverFolderId !== folder.id) setDragOverFolderId(folder.id);
+                                                if (dropPosition !== pos) setDropPosition(pos);
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleFolderDrop(folder.id);
+                                            }}
+                                            onDragEnd={() => {
+                                                dragRef.current = { sourceId: null, targetId: null, pos: 'top' };
+                                                setDraggedFolderId(null);
+                                                setDragOverFolderId(null);
+                                            }}
+                                        >
+                                            {/* Top Drop Indicator */}
+                                            {isDragTarget && dropPosition === 'top' && (
+                                                <div
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: '-1px',
+                                                        left: '8px',
+                                                        right: '8px',
+                                                        height: '3px',
+                                                        backgroundColor: '#6366f1',
+                                                        borderRadius: '9999px',
+                                                        zIndex: 50,
+                                                        pointerEvents: 'none',
+                                                        boxShadow: '0 0 6px rgba(99, 102, 241, 0.8)'
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            position: 'absolute',
+                                                            right: '-3px',
+                                                            top: '-3px',
+                                                            width: '9px',
+                                                            height: '9px',
+                                                            borderRadius: '9999px',
+                                                            backgroundColor: '#4f46e5',
+                                                            border: '1.5px solid white'
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
+
                                             {/* Folder Item */}
                                             <div
-                                                draggable
-                                                onDragStart={(e) => { setDraggedFolderId(folder.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', folder.id); }}
-                                                onDragOver={(e) => { e.preventDefault(); if (draggedFolderId && dragOverFolderId !== folder.id) setDragOverFolderId(folder.id); }}
-                                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFolderDrop(folder.id); }}
-                                                onDragEnd={() => { setDraggedFolderId(null); setDragOverFolderId(null); }}
-                                                className={`px-3 py-2 text-sm cursor-pointer transition-colors flex items-center justify-between ${draggedFolderId === folder.id ? 'opacity-40' : ''} ${dragOverFolderId === folder.id && draggedFolderId !== folder.id ? 'border-t-2 border-indigo-500' : ''} ${isSelected && !isExpanded ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                                                className={`px-3 py-2 text-sm cursor-pointer transition-colors flex items-center justify-between ${draggedFolderId === folder.id ? 'opacity-40 bg-indigo-50' : ''} ${isDragTarget ? 'bg-indigo-50/80' : ''} ${isReordering ? 'bg-amber-100 text-amber-900 ring-2 ring-inset ring-amber-400 font-bold' : isSelected && !isExpanded && !draggedFolderId && !reorderingFolderId ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
                                                 onContextMenu={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
@@ -1539,7 +1650,19 @@ export const QuickAddWindow = () => {
                                                 }}
                                                 onClick={async (e) => {
                                                     e.stopPropagation();
-                                                    
+
+                                                    // Cmd+Click (Mac) or Ctrl+Click (Windows): select folder for arrow-key reordering
+                                                    if (e.metaKey || e.ctrlKey) {
+                                                        setReorderingFolderId(prev => prev === folder.id ? null : folder.id);
+                                                        setSelectedFolderIndex(index);
+                                                        return;
+                                                    }
+
+                                                    // Normal click exits keyboard reordering mode
+                                                    if (reorderingFolderId) {
+                                                        setReorderingFolderId(null);
+                                                    }
+
                                                     // Shift+Click creates a direct parent task with an empty subtask
                                                     if (e.shiftKey) {
                                                         addTaskToList(hoveredListId!, folder.id, null, "");
@@ -1561,9 +1684,9 @@ export const QuickAddWindow = () => {
                                                     } else {
                                                         // Before expanding, check if it has sub-tasks (parent tasks)
                                                         if (ipcRenderer) {
-                                                            const fetched = await ipcRenderer.invoke('get-parent-tasks-for-folder', { 
-                                                                listId: hoveredListId, 
-                                                                folderId: folder.id 
+                                                            const fetched = await ipcRenderer.invoke('get-parent-tasks-for-folder', {
+                                                                listId: hoveredListId,
+                                                                folderId: folder.id
                                                             });
                                                             if (fetched && fetched.length > 0) {
                                                                 setExpandedFolderId(folder.id);
@@ -1574,16 +1697,52 @@ export const QuickAddWindow = () => {
                                                         }
                                                     }
                                                 }}
-                                                onMouseEnter={() => { 
-                                                    setSelectedFolderIndex(index); 
-                                                    setHoveredFolderId(folder.id); 
-                                                    setSelectedParentIndex(-1); 
+                                                onMouseEnter={() => {
+                                                    if (!draggedFolderId && !reorderingFolderId) {
+                                                        setSelectedFolderIndex(index);
+                                                        setHoveredFolderId(folder.id);
+                                                        setSelectedParentIndex(-1);
+                                                    }
                                                 }}>
-                                                <span>📁 {folder.title}</span>
+                                                <span className="pointer-events-none flex items-center gap-1">
+                                                    <span>📁 {folder.title}</span>
+                                                    {isReordering && <span className="text-xs text-amber-600">↕</span>}
+                                                </span>
                                                 {(folder as any).taskCount > 0 && (
-                                                    <span className={`text-xs ${isSelected ? 'text-white/50' : 'text-gray-400/40'}`} style={{ fontFamily: 'Acme, sans-serif' }}>{(folder as any).taskCount}</span>
+                                                    <span className={`text-xs pointer-events-none ${isReordering ? 'text-amber-700' : isSelected && !draggedFolderId && !reorderingFolderId ? 'text-white/50' : 'text-gray-400/40'}`} style={{ fontFamily: 'Acme, sans-serif' }}>{(folder as any).taskCount}</span>
                                                 )}
                                             </div>
+
+                                            {/* Bottom Drop Indicator */}
+                                            {isDragTarget && dropPosition === 'bottom' && (
+                                                <div
+                                                    style={{
+                                                        position: 'absolute',
+                                                        bottom: '-1px',
+                                                        left: '8px',
+                                                        right: '8px',
+                                                        height: '3px',
+                                                        backgroundColor: '#6366f1',
+                                                        borderRadius: '9999px',
+                                                        zIndex: 50,
+                                                        pointerEvents: 'none',
+                                                        boxShadow: '0 0 6px rgba(99, 102, 241, 0.8)'
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            position: 'absolute',
+                                                            right: '-3px',
+                                                            top: '-3px',
+                                                            width: '9px',
+                                                            height: '9px',
+                                                            borderRadius: '9999px',
+                                                            backgroundColor: '#4f46e5',
+                                                            border: '1.5px solid white'
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
 
                                             {/* Inline Parent Tasks (Manual expand on click) */}
                                             {hasParentTasks && (
@@ -1633,12 +1792,12 @@ export const QuickAddWindow = () => {
 
                 {/* Folder Context Menu */}
                 {folderContextMenu && (
-                    <div 
+                    <div
                         className="fixed bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[100] min-w-[140px]"
                         style={{ left: folderContextMenu.x, top: folderContextMenu.y }}
                         onMouseLeave={() => setFolderContextMenu(null)}
                     >
-                        <button 
+                        <button
                             className="w-full text-right px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-3 transition-colors border-b border-gray-50"
                             onClick={() => {
                                 const folder = folders.find(f => f.id === folderContextMenu.folderId);
@@ -1648,7 +1807,7 @@ export const QuickAddWindow = () => {
                             <span>تعديل الاسم</span>
                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                         </button>
-                        <button 
+                        <button
                             className="w-full text-right px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center justify-between gap-3 transition-colors"
                             onClick={() => deleteGroup(folderContextMenu.folderId)}
                         >
