@@ -662,6 +662,10 @@ export default function App() {
                         setTasks(loaded);
                         tasksRef.current = loaded;
                     }
+                    const savedSort = localStorage.getItem('injaz_sort_by');
+                    if (savedSort === 'custom' || savedSort === 'priority' || savedSort === 'created') {
+                        setSortBy(savedSort);
+                    }
                 } else if (type === 'lists') {
                     const saved = localStorage.getItem('injaz_lists');
                     if (saved) setLists(JSON.parse(saved));
