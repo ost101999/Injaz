@@ -3925,12 +3925,20 @@ export default function App() {
                     {isSettingsOpen && (
                         <div
                             data-settings-panel
-                            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-fadeIn z-[70] origin-top flex flex-col"
-                            style={{
-                                // Smart sizing: never wider/taller than the visible window (compensating for body zoom)
-                                width: Math.max(260, Math.min(440, viewport.w / preferences.zoom - 16)),
-                                maxHeight: Math.max(160, viewport.h / preferences.zoom - 64 - 16),
-                            }}
+                            className="fixed bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-fadeIn z-[70] origin-top flex flex-col"
+                            style={(() => {
+                                // Smart sizing & centering based on the visible window (compensating for body zoom)
+                                const vw = viewport.w / preferences.zoom;
+                                const vh = viewport.h / preferences.zoom;
+                                const top = 72;
+                                const width = Math.max(260, Math.min(440, vw - 24));
+                                return {
+                                    width,
+                                    left: Math.max(8, (vw - width) / 2),
+                                    top,
+                                    maxHeight: Math.max(160, vh - top - 12),
+                                };
+                            })()}
                         >
                             {/* Header Tabs */}
                             <div 
