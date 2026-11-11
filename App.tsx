@@ -4320,52 +4320,68 @@ export default function App() {
                                 )}
 
                                 {settingsTab === ('connections' as any) && (
-                                    <div className="space-y-3 animate-fadeIn mt-1">
-                                        <div>
-                                            <h4 className="text-[13px] text-gray-500 font-bold mb-3">ربط الخدمات الخارجية</h4>
-
-                                            {!googleTokens ? (
-                                                <button
-                                                    onClick={async (e) => {
-                                                        const btn = e.currentTarget;
-                                                        btn.disabled = true;
-                                                        btn.style.opacity = '0.6';
-                                                        try {
-                                                            const ipc = (window as any).require?.('electron')?.ipcRenderer;
-                                                            if (!ipc) {
-                                                                setNotification({ message: 'لا يمكن الوصول إلى Electron IPC.', type: 'error' });
-                                                                return;
-                                                            }
-                                                            const tokens = await ipc.invoke('google-tasks:auth');
-                                                            setGoogleTokens(tokens);
-                                                            localStorage.setItem('injaz_google_tokens', JSON.stringify(tokens));
-                                                            setNotification({ message: 'تم الربط بجوجل بنجاح!', type: 'success' });
-                                                        } catch (err: any) {
-                                                            console.error('Google Auth Error:', err);
-                                                            const msg = err?.message || String(err) || 'خطأ غير معروف';
-                                                            setNotification({ message: `فشل الربط: ${msg}`, type: 'error' });
-                                                        } finally {
-                                                            btn.disabled = false;
-                                                            btn.style.opacity = '1';
-                                                        }
-                                                    }}
-                                                    className="w-full p-3 bg-white border border-gray-200 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition group shadow-sm"
-                                                >
-                                                    <svg width="18" height="18" viewBox="0 0 18 18">
+                                    <div className="animate-fadeIn divide-y divide-gray-100 -my-1">
+                                        {/* ===== Google Tasks ===== */}
+                                        <section className="py-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <svg width="20" height="20" viewBox="0 0 18 18" className="shrink-0">
                                                         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
                                                         <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
                                                         <path d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.712s.102-1.172.282-1.712V4.956H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.044l3.007-2.332z" fill="#FBBC05" />
                                                         <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.443 2.048.957 4.956l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335" />
                                                     </svg>
-                                                    <span className="text-sm font-bold text-gray-700">الربط مع مهام جوجل (Google Tasks)</span>
-                                                </button>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="p-3 bg-green-50 border border-green-100 rounded-lg flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                                            <span className="text-sm font-bold text-green-700">مرتبط بمهام جوجل</span>
-                                                        </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="text-sm font-bold text-gray-800">مهام جوجل</h4>
+                                                        <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                                                            {googleTokens ? (<><span className="w-1.5 h-1.5 bg-green-500 rounded-full" />مرتبط</>) : 'غير مرتبط'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {!googleTokens ? (
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            const btn = e.currentTarget;
+                                                            btn.disabled = true;
+                                                            btn.style.opacity = '0.6';
+                                                            try {
+                                                                const ipc = (window as any).require?.('electron')?.ipcRenderer;
+                                                                if (!ipc) {
+                                                                    setNotification({ message: 'لا يمكن الوصول إلى Electron IPC.', type: 'error' });
+                                                                    return;
+                                                                }
+                                                                const tokens = await ipc.invoke('google-tasks:auth');
+                                                                setGoogleTokens(tokens);
+                                                                localStorage.setItem('injaz_google_tokens', JSON.stringify(tokens));
+                                                                setNotification({ message: 'تم الربط بجوجل بنجاح!', type: 'success' });
+                                                            } catch (err: any) {
+                                                                console.error('Google Auth Error:', err);
+                                                                const msg = err?.message || String(err) || 'خطأ غير معروف';
+                                                                setNotification({ message: `فشل الربط: ${msg}`, type: 'error' });
+                                                            } finally {
+                                                                btn.disabled = false;
+                                                                btn.style.opacity = '1';
+                                                            }
+                                                        }}
+                                                        className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold transition shrink-0"
+                                                    >
+                                                        ربط
+                                                    </button>
+                                                ) : (
+                                                    <div className="flex items-center gap-3 shrink-0">
+                                                        <button
+                                                            onClick={() => syncGoogleTasks()}
+                                                            disabled={isSyncingGoogle}
+                                                            className={`px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 text-xs font-bold transition flex items-center gap-1.5 ${isSyncingGoogle ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-100'}`}
+                                                        >
+                                                            {isSyncingGoogle ? (
+                                                                <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                                            ) : (
+                                                                <Icons.RefreshCw size={12} />
+                                                            )}
+                                                            <span>تحديث</span>
+                                                        </button>
                                                         <button
                                                             onClick={() => {
                                                                 setGoogleTokens(null);
@@ -4376,46 +4392,38 @@ export default function App() {
                                                                 localStorage.removeItem('injaz_google_tokens');
                                                                 setNotification({ message: 'تم فصل الحساب.', type: 'success' });
                                                             }}
-                                                            className="text-[10px] font-bold text-red-600 hover:underline"
+                                                            className="text-xs text-gray-400 hover:text-red-600 transition"
                                                         >
-                                                            فصل الحساب
+                                                            فصل
                                                         </button>
                                                     </div>
+                                                )}
+                                            </div>
 
-                                                    <button
-                                                        onClick={() => syncGoogleTasks()}
-                                                        disabled={isSyncingGoogle}
-                                                        className={`w-full p-2 rounded-lg bg-indigo-600 text-white font-bold text-sm transition flex items-center justify-center gap-2 ${isSyncingGoogle ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'}`}
-                                                    >
-                                                        {isSyncingGoogle ? (
-                                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                        ) : (
-                                                            <Icons.RefreshCw size={14} />
-                                                        )}
-                                                        <span>تحديث يدوي الآن</span>
-                                                    </button>
-
+                                            {googleTokens && (
+                                                <>
                                                     {googleSyncError && <p role="alert" className="text-xs text-red-700 bg-red-50 p-2 rounded-lg">{googleSyncError}</p>}
                                                     {flattenTasks(tasks).some(t => t.isGoogleSynced && t.type === 'item' && (t.googleSyncPending || !t.googleTaskId) && t.title.trim()) && (
                                                         <p className="text-xs text-amber-700">توجد تغييرات محفوظة على الجهاز تنتظر المزامنة مع جوجل.</p>
                                                     )}
-                                                    {/* List Selection UI - Toggle style */}
-                                                    <div className="pt-3 border-t border-gray-100">
+
+                                                    {/* Synced lists (collapsible) */}
+                                                    <div>
                                                         <button
                                                             onClick={() => setIsGoogleListsExpanded(!isGoogleListsExpanded)}
-                                                            className="w-full flex items-center justify-between text-[11px] font-bold text-gray-500 mb-2 hover:text-indigo-600 transition-colors"
+                                                            className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-indigo-600 transition-colors"
                                                         >
-                                                            <span>القوائم المتزامنة ({googleSelectedListIds.length === 0 ? 'لا يوجد' : `${googleSelectedListIds.length} قائمة`})</span>
+                                                            <span>القوائم المتزامنة ({googleSelectedListIds.length === 0 ? 'لا يوجد' : googleSelectedListIds.length})</span>
                                                             <Icons.ChevronDown size={14} className={`transition-transform duration-200 ${isGoogleListsExpanded ? 'rotate-180' : ''}`} />
                                                         </button>
 
                                                         {isGoogleListsExpanded && (
-                                                            <div className="space-y-1 max-h-48 overflow-y-auto pr-1 animate-fadeIn">
+                                                            <div className="mt-2 space-y-0.5 max-h-40 overflow-y-auto animate-fadeIn">
                                                                 {googleAllLists.length === 0 && (
-                                                                    <p className="text-[10px] text-gray-400 italic">جاري تحميل القوائم...</p>
+                                                                    <p className="text-[11px] text-gray-400">جاري تحميل القوائم...</p>
                                                                 )}
                                                                 {googleAllLists.map(list => (
-                                                                    <label key={list.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition border border-transparent hover:border-gray-100">
+                                                                    <label key={list.id} className="flex items-center gap-2 px-1 py-1.5 rounded-md hover:bg-gray-50 cursor-pointer transition">
                                                                         <input
                                                                             type="checkbox"
                                                                             checked={googleSelectedListIds.includes(list.id)}
@@ -4429,53 +4437,54 @@ export default function App() {
                                                                             }}
                                                                             className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                                                                         />
-                                                                        <span className="text-xs font-bold text-gray-700">{list.title}</span>
+                                                                        <span className="text-xs text-gray-700">{list.title}</span>
                                                                     </label>
                                                                 ))}
                                                             </div>
                                                         )}
                                                     </div>
-                                                </div>
+                                                </>
                                             )}
+                                        </section>
 
-                                            {/* Divider */}
-                                            <div className="my-4 border-t border-gray-100"></div>
+                                        {/* ===== Injaz Cloud (Firebase) ===== */}
+                                        <section className="py-4">
+                                            <FirebaseSyncPanel sync={firebaseSync} />
+                                        </section>
 
-                                            <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-3 shadow-sm" dir="rtl">
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <h4 className="text-sm font-bold text-gray-700">إصدار التطبيق</h4>
-                                                        <p className="text-xs text-gray-500 mt-1">
-                                                            النسخة المثبّتة: {currentVersion ? `v${currentVersion}` : 'جارٍ التعرّف على النسخة…'}
-                                                        </p>
-                                                    </div>
+                                        {/* ===== App version ===== */}
+                                        <section className="py-4 space-y-2" dir="rtl">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-gray-800">إصدار التطبيق</h4>
+                                                    <p className="text-[11px] text-gray-400 font-en">{currentVersion ? `v${currentVersion}` : '…'}</p>
+                                                </div>
+                                                {updateStatus === 'available' ? (
+                                                    <button type="button" onClick={handleStartUpdate} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shrink-0">
+                                                        تحديث إلى {latestVersion ? `v${latestVersion}` : 'الأحدث'}
+                                                    </button>
+                                                ) : (
                                                     <button
                                                         type="button"
                                                         onClick={checkForUpdates}
                                                         disabled={updateStatus === 'checking'}
-                                                        className="px-3 py-2 bg-indigo-600 disabled:opacity-50 text-white rounded text-sm"
+                                                        className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 rounded-lg text-xs font-bold transition shrink-0"
                                                     >
-                                                        {updateStatus === 'checking' ? 'جارٍ الفحص…' : 'فحص التحديثات الآن'}
-                                                    </button>
-                                                </div>
-                                                <p className={`text-xs ${updateStatus === 'error' ? 'text-red-600' : updateStatus === 'available' ? 'text-amber-700' : 'text-gray-600'}`}>
-                                                    {updateStatus === 'checking' && 'جارٍ مقارنة نسختك بآخر إصدار منشور…'}
-                                                    {updateStatus === 'up-to-date' && (latestVersion && currentVersion && latestVersion !== currentVersion
-                                                        ? `نسخة هذا الجهاز (v${currentVersion}) أحدث من آخر إصدار منشور (v${latestVersion}).`
-                                                        : `أنت تستخدم أحدث إصدار${latestVersion ? ` (v${latestVersion})` : ''}.`)}
-                                                    {updateStatus === 'available' && `يوجد إصدار أحدث${latestVersion ? `: v${latestVersion}` : ''}.`}
-                                                    {updateStatus === 'error' && `تعذّر فحص التحديثات: ${updateErrorMsg}`}
-                                                    {updateStatus === 'idle' && 'تحقق يدويًا متى أردت معرفة ما إذا كان هذا الجهاز يحتاج تحديثًا.'}
-                                                </p>
-                                                {updateStatus === 'available' && (
-                                                    <button type="button" onClick={handleStartUpdate} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold transition">
-                                                        تحديث الآن {latestVersion ? `(v${latestVersion})` : ''}
+                                                        {updateStatus === 'checking' ? 'جارٍ الفحص…' : 'فحص التحديثات'}
                                                     </button>
                                                 )}
-                                                {lastUpdateCheck && <p className="text-[11px] text-gray-400">آخر فحص: {new Date(lastUpdateCheck).toLocaleString('ar-EG')}</p>}
                                             </div>
-
-                                            <FirebaseSyncPanel sync={firebaseSync} />
+                                            <p className={`text-[11px] ${updateStatus === 'error' ? 'text-red-600' : updateStatus === 'available' ? 'text-amber-700' : 'text-gray-400'}`}>
+                                                {updateStatus === 'checking' && 'جارٍ مقارنة نسختك بآخر إصدار منشور…'}
+                                                {updateStatus === 'up-to-date' && (latestVersion && currentVersion && latestVersion !== currentVersion
+                                                    ? `نسخة هذا الجهاز (v${currentVersion}) أحدث من آخر إصدار منشور (v${latestVersion}).`
+                                                    : `أنت تستخدم أحدث إصدار${latestVersion ? ` (v${latestVersion})` : ''}.`)}
+                                                {updateStatus === 'available' && `يوجد إصدار أحدث${latestVersion ? `: v${latestVersion}` : ''}.`}
+                                                {updateStatus === 'error' && `تعذّر فحص التحديثات: ${updateErrorMsg}`}
+                                                {updateStatus === 'idle' && 'تحقق يدويًا متى أردت.'}
+                                                {lastUpdateCheck && updateStatus !== 'checking' ? ` · آخر فحص: ${new Date(lastUpdateCheck).toLocaleString('ar-EG')}` : ''}
+                                            </p>
+                                        </section>
 
                                             {/* Cloud File Sync — hidden: Firebase sync replaces it. Set to true to bring the section back. */}
                                             {false && (<div>
@@ -4550,7 +4559,6 @@ export default function App() {
                                                     )}
                                                 </div>
                                             </div>)}
-                                        </div>
                                     </div>
                                 )}
                             </div>

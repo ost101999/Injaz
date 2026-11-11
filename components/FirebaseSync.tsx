@@ -176,15 +176,27 @@ export function useFirebaseSync(snapshot: Snapshot, apply: (expected: Snapshot, 
 }
 
 export function FirebaseSyncPanel({ sync }: { sync: ReturnType<typeof useFirebaseSync> }) {
-    return <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-3 shadow-sm" dir="rtl">
-        <h4 className="text-sm font-bold text-gray-700">مزامنة إنجاز السحابية</h4>
-        {!sync.connected ? <>
-            <input type="email" autoComplete="username" placeholder="البريد الإلكتروني" value={sync.email} onChange={e => sync.setEmail(e.target.value)} className="w-full p-2 border rounded text-sm" />
-            <input type="password" autoComplete="current-password" placeholder="كلمة المرور" value={sync.password} onChange={e => sync.setPassword(e.target.value)} className="w-full p-2 border rounded text-sm" />
-            <button type="button" onClick={() => void sync.login()} className="px-3 py-2 bg-indigo-600 text-white rounded text-sm">تسجيل الدخول وتفعيل المزامنة</button>
-        </> : <div className="flex gap-2"><button type="button" onClick={sync.retry} className="px-3 py-2 bg-indigo-600 text-white rounded text-sm">مزامنة الآن</button><button type="button" onClick={() => void sync.logout()} className="px-3 py-2 border rounded text-sm">تسجيل الخروج</button></div>}
-        <p className="text-xs text-gray-600">{sync.status}{sync.lastSuccess ? ` — آخر نجاح: ${new Date(sync.lastSuccess).toLocaleString('ar-EG')}` : ''}</p>
-        {sync.conflict && <div className="p-3 bg-amber-50 rounded space-y-3">
+    const inputCls = "w-full px-3 py-2 bg-gray-50 border border-transparent focus:border-indigo-300 focus:bg-white rounded-lg text-sm outline-none transition";
+    return <div className="space-y-3" dir="rtl">
+        <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+                <h4 className="text-sm font-bold text-gray-800">مزامنة إنجاز السحابية</h4>
+                <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                    {sync.connected && <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />}
+                    {sync.status}{sync.lastSuccess ? ` · آخر نجاح: ${new Date(sync.lastSuccess).toLocaleString('ar-EG')}` : ''}
+                </p>
+            </div>
+            {sync.connected && <div className="flex items-center gap-3 shrink-0">
+                <button type="button" onClick={sync.retry} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition">مزامنة</button>
+                <button type="button" onClick={() => void sync.logout()} className="text-xs text-gray-400 hover:text-red-600 transition">خروج</button>
+            </div>}
+        </div>
+        {!sync.connected && <div className="space-y-2">
+            <input type="email" autoComplete="username" placeholder="البريد الإلكتروني" value={sync.email} onChange={e => sync.setEmail(e.target.value)} className={inputCls} />
+            <input type="password" autoComplete="current-password" placeholder="كلمة المرور" value={sync.password} onChange={e => sync.setPassword(e.target.value)} className={inputCls} />
+            <button type="button" onClick={() => void sync.login()} className="w-full px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition">تسجيل الدخول وتفعيل المزامنة</button>
+        </div>}
+        {sync.conflict && <div className="p-3 bg-amber-50 rounded-lg space-y-3">
             <p className="text-sm font-bold">توجد نسختان مختلفتان. راجع كل قسم واختر النسخة التي تريد الاحتفاظ بها.</p>
             {sync.conflict.conflicts.map((field: string) => <div key={field} className="space-y-1">
                 <p className="font-bold text-sm">{labels[field] || field}</p>
