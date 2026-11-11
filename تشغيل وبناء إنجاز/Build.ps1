@@ -31,6 +31,15 @@ function Remove-SafeDirectory([string] $target) {
 
 try {
     Set-Location -LiteralPath $root
+    $installed = @(Get-Process -Name 'injaz---advanced-task-manager' -ErrorAction SilentlyContinue)
+    if ($installed.Count -gt 0) {
+        Write-Host 'Closing Injaz before building...' -ForegroundColor Cyan
+        $installed | Stop-Process -Force -ErrorAction SilentlyContinue
+        $deadline = (Get-Date).AddSeconds(10)
+        while ((Get-Process -Name 'injaz---advanced-task-manager' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+        }
+    }
     $builder = Join-Path $root 'node_modules\.bin\electron-builder.cmd'
     if (-not (Test-Path -LiteralPath $builder)) {
         throw 'Dependencies are missing. Open a terminal in the project folder and run npm install.'
