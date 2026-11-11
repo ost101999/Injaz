@@ -115,7 +115,8 @@ try {
         }
         Write-Host 'Installation completed.' -ForegroundColor Green
     }
-    if (-not $env:INJAZ_NONINTERACTIVE) { Read-Host 'Press Enter to close' | Out-Null }
+    # Success: close the window automatically (the Enter prompt stays only for failures, below).
+    if (-not $env:INJAZ_NONINTERACTIVE) { Start-Sleep -Seconds 2 }
 } catch {
     Write-Host "`n$($_.Exception.Message)" -ForegroundColor Red
     if (Test-Path -LiteralPath $stage) { Remove-SafeDirectory $stage }
