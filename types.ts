@@ -40,6 +40,7 @@ export interface Task {
   googleSyncPending?: boolean; // Persist unsent changes across restarts.
   googleSyncRevision?: number;
   isArchived?: boolean;
+  autoArchiveWhenEmpty?: boolean;
   children: Task[]; // Recursive structure
   isCompleted: boolean;
   dueDate?: string; // ISO Date string
