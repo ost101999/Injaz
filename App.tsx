@@ -1730,6 +1730,7 @@ export default function App() {
         };
 
         const handleMouseDown = (e: MouseEvent) => {
+            if ((e.button === 3 || e.button === 4) && activeTab === 'tasks' && viewMode === 'groups') e.preventDefault();
             if (contextMenu.isOpen) {
                 // If the click is inside the context menu, don't close it here.
                 // The menu items will handle their own closing via onClick.
@@ -1751,6 +1752,14 @@ export default function App() {
 
         // Mouse back/forward buttons for list navigation
         const handleMouseButton = (e: MouseEvent) => {
+            if ((e.button === 3 || e.button === 4) && activeTab === 'tasks' && viewMode === 'groups') {
+                e.preventDefault();
+                if (isModalOpen || isSettingsOpen || groupCreation.isOpen || inlineEditingId || isQuickAdding) return;
+                const index = lists.findIndex(list => list.id === activeListId);
+                const next = lists[index + (e.button === 3 ? -1 : 1)];
+                if (index >= 0 && next) navigateToList(next.id);
+                return;
+            }
             if (e.button === 3) { // Back button
                 e.preventDefault();
                 // Priority: Folder Breadcrumbs -> List History
@@ -1789,7 +1798,7 @@ export default function App() {
             window.removeEventListener('mousedown', handleMouseDown, true);
             window.removeEventListener('mouseup', handleMouseButton);
         };
-    }, [hotkeys, contextMenu, selectedTaskIds, currentTasks, isModalOpen, isSettingsOpen, groupCreation.isOpen, inlineEditingId, isQuickAdding]);
+    }, [hotkeys, contextMenu, selectedTaskIds, currentTasks, isModalOpen, isSettingsOpen, groupCreation.isOpen, inlineEditingId, isQuickAdding, activeTab, viewMode, lists, activeListId, breadcrumbs, listHistory, listForwardHistory]);
 
 
 
@@ -3949,6 +3958,12 @@ export default function App() {
                         <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icons.Check size={24} /></div>
                         <h1 className="text-xl font-bold text-indigo-900">إنجاز</h1>
                     </div>
+                    {activeTab === 'tasks' && viewMode === 'groups' && activeList && (
+                        <div key={activeList.id} className="min-w-0 max-w-[10rem] flex items-center gap-2 rounded-full bg-indigo-50/70 px-3 py-1.5 text-xs font-bold text-indigo-700 animate-fadeIn motion-reduce:animate-none" title={activeList.title}>
+                            <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-indigo-400" />
+                            <span className="truncate">{activeList.title}</span>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-2 justify-center" style={{ WebkitAppRegion: 'no-drag' } as any}>
