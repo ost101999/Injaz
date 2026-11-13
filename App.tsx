@@ -34,12 +34,10 @@ export default function App() {
     const [currentVersion, setCurrentVersion] = useState<string | null>(null);
     const [latestVersion, setLatestVersion] = useState<string | null>(null);
     const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
-    // Version whose banner the user closed. The red dot on the bell stays while an update exists,
-    // but the banner won't pop up again for that same version (persisted across restarts).
-    const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => localStorage.getItem('injaz_dismissed_update_version'));
+    // Dismissal lasts for this session; a still-available update is shown again on restart.
+    const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
     const dismissUpdateBanner = () => {
         const v = latestVersion || 'unknown';
-        localStorage.setItem('injaz_dismissed_update_version', v);
         setDismissedUpdateVersion(v);
     };
     const isUpdateBannerVisible = updateAvailable && dismissedUpdateVersion !== (latestVersion || 'unknown');
@@ -542,7 +540,7 @@ export default function App() {
                 console.error('Update error:', error);
             });
             // Run one check only after the renderer is listening for its result.
-            ipc.send('check-for-updates');
+            ipc.send('check-for-updates', { manual: true });
             return () => {
                 ipc.removeAllListeners('checking_for_update');
                 ipc.removeAllListeners('update_available');
