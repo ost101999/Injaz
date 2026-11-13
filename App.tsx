@@ -2516,8 +2516,9 @@ export default function App() {
                     const hasActive = folderTask.children.some(c => !c.isCompleted);
 
                     if (!hasActive) {
-                        // Completely empty of active tasks (Original logic -> show prompt)
-                        setFolderActionPromptId(folderTask.id);
+                        if (!folderTask.autoArchiveWhenEmpty) {
+                            setFolderActionPromptId(folderTask.id);
+                        }
                     } else if (effectiveCount === 0) {
                         // Folder has active tasks (e.g. parent tasks), BUT effective count is 0.
                         // This means it only contains parent tasks with instructional subtasks!
@@ -2582,10 +2583,9 @@ export default function App() {
     const handleFolderPromptAction = (folderId: string, action: 'archive' | 'delete') => {
         if (action === 'delete') {
             modifyTasks(prev => removeTaskById(prev, folderId));
+        } else {
+            updateTask(folderId, { autoArchiveWhenEmpty: true });
         }
-        // If 'archive', we just clear the prompt. 
-        // The folder is already "archived" in our logic because it has no active tasks
-        // and won't be shown once folderActionPromptId is null.
         setFolderActionPromptId(null);
     };
 
