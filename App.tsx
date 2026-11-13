@@ -5933,7 +5933,10 @@ export default function App() {
                                                         key={l.id}
                                                         onMouseEnter={() => setMoveTargetListId(l.id)}
                                                         onFocus={() => setMoveTargetListId(l.id)}
-                                                        onClick={() => setMoveTargetListId(l.id)}
+                                                        onClick={() => {
+                                                            if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, l.id);
+                                                            setMoveTargetListId(null);
+                                                        }}
                                                         className={`w-full px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 flex items-center justify-between transition-colors ${activeListId === l.id ? 'bg-gray-50 opacity-60' : ''}`}
                                                     >
                                                         <div className="flex items-center gap-2">
@@ -5945,19 +5948,11 @@ export default function App() {
                                                 ))}
                                             </div>
                                             {moveTargetListId && (
-                                                <div className="absolute top-0 min-w-[160px] max-h-64 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
-                                                    style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 320 ? { right: '100%' } : { left: '100%' }}>
-                                                    <button
-                                                        onClick={() => {
-                                                            if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, moveTargetListId);
-                                                            setMoveTargetListId(null);
-                                                        }}
-                                                        className="w-full px-3 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg flex items-center gap-2 mb-1"
-                                                    >
-                                                        <div className="w-4 h-4 rounded border border-dashed border-gray-300 flex items-center justify-center text-[10px]">/</div>
-                                                        <span>بدون مجموعة</span>
-                                                    </button>
-                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).map(folder => (
+                                                <div className="absolute top-0 w-56 max-h-64 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
+                                                    style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 390 ? { right: '100%' } : { left: '100%' }}>
+                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId)
+                                                        .sort((a, b) => Number((b.children || []).some(c => !c.isCompleted && c.type !== 'folder')) - Number((a.children || []).some(c => !c.isCompleted && c.type !== 'folder')))
+                                                        .map(folder => (
                                                         <button
                                                             key={folder.id}
                                                             onClick={() => {
@@ -5966,10 +5961,10 @@ export default function App() {
                                                                 setActiveSubmenu(null);
                                                                 setMoveTargetListId(null);
                                                             }}
-                                                            className="w-full px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 flex items-center gap-2 transition-colors"
+                                                            className="w-full px-3 py-2 text-xs rounded-lg hover:bg-indigo-50 flex items-center gap-2 transition-colors"
                                                         >
                                                             <Icons.Folder size={14} className="text-indigo-400" />
-                                                            <span className="font-bold text-gray-700">{folder.title}</span>
+                                                            <span className="font-bold text-gray-700 whitespace-nowrap truncate">{folder.title}</span>
                                                         </button>
                                                     ))}
                                                     {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).length === 0 && (
