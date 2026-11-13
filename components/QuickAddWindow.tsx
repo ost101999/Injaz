@@ -1729,9 +1729,11 @@ export const QuickAddWindow = () => {
                                                         return;
                                                     }
 
-                                                    // Normal click exits keyboard reordering mode
+                                                    // In reordering mode, a click selects another folder.
                                                     if (reorderingFolderId) {
-                                                        setReorderingFolderId(null);
+                                                        setReorderingFolderId(folder.id);
+                                                        setSelectedFolderIndex(index);
+                                                        return;
                                                     }
 
                                                     // Shift+Click creates a direct parent task with an empty subtask
