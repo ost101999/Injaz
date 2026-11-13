@@ -5948,7 +5948,15 @@ export default function App() {
                                                 ))}
                                             </div>
                                             {moveTargetListId && (
-                                                <div className="absolute top-0 w-56 max-h-64 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
+                                                <div className="absolute top-0 w-56 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
+                                                    ref={node => {
+                                                        if (!node) return;
+                                                        const zoom = preferences.zoom || 1;
+                                                        node.style.maxHeight = `${Math.min(256, (window.innerHeight - 20) / zoom)}px`;
+                                                        node.style.top = '0px';
+                                                        const rect = node.getBoundingClientRect();
+                                                        node.style.top = `${Math.min(0, (window.innerHeight - 10 - rect.bottom) / zoom)}px`;
+                                                    }}
                                                     style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 390 ? { right: '100%' } : { left: '100%' }}>
                                                     {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId)
                                                         .sort((a, b) => Number((b.children || []).some(c => !c.isCompleted && c.type !== 'folder')) - Number((a.children || []).some(c => !c.isCompleted && c.type !== 'folder')))
