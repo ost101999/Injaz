@@ -2186,8 +2186,10 @@ export default function App() {
                 // Move folders
                 const tasksWithoutItem = removeTaskById(prevTasks, id);
                 const updatedTask = { ...originalTask, ...updates };
-                const targetId = updatedTask.parentId || 'root';
-                return addTaskToFolderById(tasksWithoutItem, targetId, updatedTask);
+                if (!updatedTask.parentId || updatedTask.parentId === 'root') {
+                    return [updatedTask, ...tasksWithoutItem];
+                }
+                return addTaskToFolderById(tasksWithoutItem, updatedTask.parentId, updatedTask);
             } else {
                 const updateRecursive = (list: Task[]): Task[] => {
                     return list.map(t => {
@@ -2949,7 +2951,7 @@ export default function App() {
     };
 
     const handleMoveToList = (taskId: string, listId: string) => {
-        updateTask(taskId, { listId });
+        updateTask(taskId, { listId, parentId: null });
         setContextMenu(prev => ({ ...prev, isOpen: false }));
         setActiveSubmenu(null);
     };
@@ -5924,11 +5926,13 @@ export default function App() {
                                         );
                                     })()}
                                     {activeSubmenu === 'list' && (
-                                        <div className="space-y-1 max-h-64 overflow-y-auto">
-                                            {!moveTargetListId ? (
-                                                lists.map(l => (
+                                        <div className="relative">
+                                            <div className="space-y-1 max-h-64 overflow-y-auto">
+                                                {lists.map(l => (
                                                     <button
                                                         key={l.id}
+                                                        onMouseEnter={() => setMoveTargetListId(l.id)}
+                                                        onFocus={() => setMoveTargetListId(l.id)}
                                                         onClick={() => setMoveTargetListId(l.id)}
                                                         className={`w-full px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 flex items-center justify-between transition-colors ${activeListId === l.id ? 'bg-gray-50 opacity-60' : ''}`}
                                                     >
@@ -5938,16 +5942,11 @@ export default function App() {
                                                         </div>
                                                         <Icons.ChevronLeft size={12} className="text-gray-300" />
                                                     </button>
-                                                ))
-                                            ) : (
-                                                <div className="animate-fadeIn">
-                                                    <button
-                                                        onClick={() => setMoveTargetListId(null)}
-                                                        className="w-full px-3 py-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg flex items-center gap-1 mb-1 border-b border-indigo-50"
-                                                    >
-                                                        <Icons.ChevronRight size={12} />
-                                                        <span>رجوع للقوائم</span>
-                                                    </button>
+                                                ))}
+                                            </div>
+                                            {moveTargetListId && (
+                                                <div className="absolute top-0 min-w-[160px] max-h-64 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
+                                                    style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 320 ? { right: '100%' } : { left: '100%' }}>
                                                     <button
                                                         onClick={() => {
                                                             if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, moveTargetListId);
@@ -5958,7 +5957,7 @@ export default function App() {
                                                         <div className="w-4 h-4 rounded border border-dashed border-gray-300 flex items-center justify-center text-[10px]">/</div>
                                                         <span>بدون مجموعة</span>
                                                     </button>
-                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder').map(folder => (
+                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).map(folder => (
                                                         <button
                                                             key={folder.id}
                                                             onClick={() => {
@@ -5973,7 +5972,7 @@ export default function App() {
                                                             <span className="font-bold text-gray-700">{folder.title}</span>
                                                         </button>
                                                     ))}
-                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder').length === 0 && (
+                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).length === 0 && (
                                                         <div className="px-3 py-4 text-center text-[10px] text-gray-400 italic">لا توجد مجموعات</div>
                                                     )}
                                                 </div>
