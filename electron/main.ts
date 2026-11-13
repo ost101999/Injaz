@@ -564,9 +564,9 @@ if (!gotTheLock) {
         // Quick Note window is created on demand (not at startup)
         createTray();
 
-        // Check GitHub Releases at startup. This works even when a release
-        // does not contain electron-updater's platform manifest files.
-        void checkForUpdates();
+        // The renderer requests the initial check after installing its listeners.
+        // Continue checking while the application stays open.
+        setInterval(() => void checkForUpdates(), AUTO_UPDATE_CHECK_MIN_INTERVAL_MS);
 
         registerGlobalShortcut(currentGlobalShortcut);
         registerAppToggleShortcut(currentAppToggleShortcut);
