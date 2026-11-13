@@ -1128,6 +1128,11 @@ if (!gotTheLock) {
                     window.dispatchEvent(new CustomEvent('injaz-task-added'));
                 })()
             `);
+            BrowserWindow.getAllWindows().forEach(win => {
+                if (!win.isDestroyed() && win.webContents !== event.sender) {
+                    win.webContents.send('data-updated', 'tasks');
+                }
+            });
             return true;
         }
         return false;

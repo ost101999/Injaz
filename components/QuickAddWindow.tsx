@@ -46,6 +46,7 @@ export const QuickAddWindow = () => {
     const [newListName, setNewListName] = useState('');
     const [newFolderName, setNewFolderName] = useState('');
     const [folderContextMenu, setFolderContextMenu] = useState<{ x: number, y: number, folderId: string } | null>(null);
+    const [renamingFolder, setRenamingFolder] = useState<{ id: string; title: string; originalTitle: string } | null>(null);
 
     // Saved selection state - to preserve selection when popup opens
     const [savedSelection, setSavedSelection] = useState<{ text: string; range: Range | null } | null>(null);
@@ -286,7 +287,7 @@ export const QuickAddWindow = () => {
 
     // Global keyboard handler when popup is open so navigation & type-to-select work even after clicking/dragging in the popup
     useEffect(() => {
-        if (!showListPopup || isCreatingList || isCreatingFolder) return;
+        if (!showListPopup || isCreatingList || isCreatingFolder || renamingFolder) return;
 
         const onPopupKeyDown = (e: KeyboardEvent) => {
             // Reordering mode takes top priority
@@ -378,7 +379,7 @@ export const QuickAddWindow = () => {
 
         window.addEventListener('keydown', onPopupKeyDown, true);
         return () => window.removeEventListener('keydown', onPopupKeyDown, true);
-    }, [showListPopup, showFolderPopup, isCreatingList, isCreatingFolder, reorderingFolderId, moveFolderByKeyboard, sortedFolders, selectedFolderIndex, lists, selectedIndex, hoveredListId]);
+    }, [showListPopup, showFolderPopup, isCreatingList, isCreatingFolder, renamingFolder, reorderingFolderId, moveFolderByKeyboard, sortedFolders, selectedFolderIndex, lists, selectedIndex, hoveredListId]);
 
     const handleFolderDrop = async (fallbackTargetId?: string) => {
         const sourceId = dragRef.current.sourceId || draggedFolderId;
@@ -1408,17 +1409,17 @@ export const QuickAddWindow = () => {
         setFolderContextMenu(null);
     };
 
-    const renameGroup = async (folderId: string, currentTitle: string) => {
-        if (!ipcRenderer) return;
-        const newTitle = window.prompt('اسم المجموعة الجديد:', currentTitle);
-        if (newTitle && newTitle.trim() && newTitle.trim() !== currentTitle) {
-            await ipcRenderer.invoke('update-folder', { folderId, title: newTitle.trim() });
+    const saveGroupName = async () => {
+        if (!renamingFolder || !ipcRenderer) return;
+        const { id, title, originalTitle } = renamingFolder;
+        setRenamingFolder(null);
+        if (title.trim() && title.trim() !== originalTitle) {
+            await ipcRenderer.invoke('update-folder', { folderId: id, title: title.trim() });
             if (hoveredListId) {
                 const fetched = await ipcRenderer.invoke('get-folders-for-list', hoveredListId);
                 setFolders(fetched || []);
             }
         }
-        setFolderContextMenu(null);
     };
 
 
@@ -1653,7 +1654,7 @@ export const QuickAddWindow = () => {
                                         <div
                                             key={folder.id}
                                             className="flex flex-col relative select-none"
-                                            draggable
+                                            draggable={renamingFolder?.id !== folder.id}
                                             onDragStart={(e) => {
                                                 dragRef.current = { sourceId: folder.id, targetId: null, pos: 'top' };
                                                 setDraggedFolderId(folder.id);
@@ -1779,10 +1780,25 @@ export const QuickAddWindow = () => {
                                                         setSelectedParentIndex(-1);
                                                     }
                                                 }}>
-                                                <span className="pointer-events-none flex items-center gap-1">
+                                                {renamingFolder?.id === folder.id ? (
+                                                    <input
+                                                        autoFocus
+                                                        className="w-full text-sm text-gray-800 bg-white border border-indigo-300 rounded px-1 outline-none"
+                                                        value={renamingFolder.title}
+                                                        onFocus={e => e.currentTarget.select()}
+                                                        onChange={e => setRenamingFolder({ ...renamingFolder, title: e.target.value })}
+                                                        onClick={e => e.stopPropagation()}
+                                                        onKeyDown={e => {
+                                                            e.stopPropagation();
+                                                            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                                                            if (e.key === 'Escape') { e.preventDefault(); setRenamingFolder(null); }
+                                                        }}
+                                                        onBlur={() => void saveGroupName()}
+                                                    />
+                                                ) : <span className="pointer-events-none flex items-center gap-1">
                                                     <span>📁 {folder.title}</span>
                                                     {isReordering && <span className="text-xs text-amber-600">↕</span>}
-                                                </span>
+                                                </span>}
                                                 {(folder as any).taskCount > 0 && (
                                                     <span className={`text-xs pointer-events-none ${isReordering ? 'text-amber-700' : isSelected && !draggedFolderId && !reorderingFolderId ? 'text-white/50' : 'text-gray-400/40'}`} style={{ fontFamily: 'Acme, sans-serif' }}>{(folder as any).taskCount}</span>
                                                 )}
@@ -1876,7 +1892,8 @@ export const QuickAddWindow = () => {
                             className="w-full text-right px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-3 transition-colors border-b border-gray-50"
                             onClick={() => {
                                 const folder = folders.find(f => f.id === folderContextMenu.folderId);
-                                if (folder) renameGroup(folderContextMenu.folderId, folder.title);
+                                if (folder) setRenamingFolder({ id: folder.id, title: folder.title, originalTitle: folder.title });
+                                setFolderContextMenu(null);
                             }}
                         >
                             <span>تعديل الاسم</span>
