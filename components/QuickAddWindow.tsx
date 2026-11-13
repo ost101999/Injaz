@@ -252,13 +252,8 @@ export const QuickAddWindow = () => {
         }
     }, [expandedFolderId, hoveredListId]);
 
-    // Sort folders: Non-empty ones stay at the top, empty ones below them.
-    // Within each group the stored (manually reorderable) order is kept.
-    const sortedFolders = React.useMemo(() => {
-        const nonEmptyFolders = folders.filter(f => (f as any).taskCount > 0);
-        const emptyFolders = folders.filter(f => !(f as any).taskCount || (f as any).taskCount === 0);
-        return [...nonEmptyFolders, ...emptyFolders];
-    }, [folders]);
+    // Keep the saved manual order even when a folder has no active tasks.
+    const sortedFolders = folders;
 
     // Drag & drop & keyboard reordering of folders
     const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
@@ -1799,9 +1794,7 @@ export const QuickAddWindow = () => {
                                                     <span>📁 {folder.title}</span>
                                                     {isReordering && <span className="text-xs text-amber-600">↕</span>}
                                                 </span>}
-                                                {(folder as any).taskCount > 0 && (
-                                                    <span className={`text-xs pointer-events-none ${isReordering ? 'text-amber-700' : isSelected && !draggedFolderId && !reorderingFolderId ? 'text-white/50' : 'text-gray-400/40'}`} style={{ fontFamily: 'Acme, sans-serif' }}>{(folder as any).taskCount}</span>
-                                                )}
+                                                <span className={`text-xs pointer-events-none ${isReordering ? 'text-amber-700' : isSelected && !draggedFolderId && !reorderingFolderId ? 'text-white/50' : 'text-gray-400/40'}`} style={{ fontFamily: 'Acme, sans-serif' }}>{(folder as any).taskCount ?? 0}</span>
                                             </div>
 
                                             {/* Bottom Drop Indicator */}

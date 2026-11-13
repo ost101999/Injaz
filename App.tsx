@@ -5959,7 +5959,6 @@ export default function App() {
                                                     }}
                                                     style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 390 ? { right: '100%' } : { left: '100%' }}>
                                                     {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId)
-                                                        .sort((a, b) => Number((b.children || []).some(c => !c.isCompleted && c.type !== 'folder')) - Number((a.children || []).some(c => !c.isCompleted && c.type !== 'folder')))
                                                         .map(folder => (
                                                         <button
                                                             key={folder.id}
