@@ -650,6 +650,15 @@ export default function App() {
     useEffect(() => {
         const handleQuickTaskAdded = (e: any) => {
             const newTask = e.detail;
+            if (!newTask) {
+                const saved = localStorage.getItem('injaz_tasks');
+                if (saved) {
+                    const loadedTasks = JSON.parse(saved);
+                    setTasks(loadedTasks);
+                    tasksRef.current = loadedTasks;
+                }
+                return;
+            }
             const groupId = newTask.parentId || '__ungrouped__';
 
             // Check if this group was previously empty/hidden in the current list
