@@ -477,67 +477,173 @@ export const QuickAddWindow = () => {
         if (html || plainText) {
             e.preventDefault();
 
-            let contentToInsert = '';
+            const escapeHtml = (str: string) =>
+                str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const escapeAttr = (str: string) =>
+                escapeHtml(str).replace(/"/g, '&quot;');
+
+            let linesToInsert: string[] = [];
 
             if (html) {
-                // ... (existing sanitize logic) ...
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                const cleanNode = (node: Node): string => {
-                    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        const el = node as HTMLElement;
-                        const tag = el.tagName.toLowerCase();
-                        const style = el.getAttribute('style') || '';
-                        const isBold = style.includes('font-weight: bold') || style.includes('font-weight: 700') ||
-                            tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700';
-                        const isItalic = tag === 'i' || tag === 'em' || style.includes('font-style: italic');
-                        const isUnderline = tag === 'u' || style.includes('text-decoration: underline');
-                        let innerContent = '';
-                        el.childNodes.forEach(child => { innerContent += cleanNode(child); });
-                        if (tag === 'a') {
-                            const href = el.getAttribute('href') || '';
-                            return `<a href="${href}" contenteditable="false" class="text-blue-600 hover:underline cursor-pointer" style="color: #2563eb; text-decoration: underline;">${innerContent}</a>`;
-                        }
-                        let result = innerContent;
-                        if (isBold) result = `<strong>${result}</strong>`;
-                        if (isItalic) result = `<em>${result}</em>`;
-                        if (isUnderline) result = `<u>${result}</u>`;
-                        // Block level elements: convert to div wrapper for Injaz style
-                        if (tag === 'div' || tag === 'p' || tag === 'br') return `|LINE_BREAK|${result || '<br>'}|LINE_BREAK|`;
-                        return result;
+                const BLOCK_TAGS = new Set(['div', 'p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'tr', 'section', 'article', 'header', 'footer', 'pre']);
+                const IGNORE_TAGS = new Set(['script', 'style', 'meta', 'link', 'noscript', 'head', 'title']);
+
+                const lines: string[] = [];
+                let current = '';
+                let hasExplicitBreak = false;
+                let pendingBlockBreak = false;
+
+                const flushCurrent = (forceEmpty = false) => {
+                    if (current !== '' || hasExplicitBreak || forceEmpty) {
+                        lines.push(current);
                     }
-                    return '';
+                    current = '';
+                    hasExplicitBreak = false;
+                    pendingBlockBreak = false;
                 };
 
-                let rawContent = '';
-                doc.body.childNodes.forEach(child => { rawContent += cleanNode(child); });
-
-                // Split by our marker and filter out empty segments from double breaks
-                const lines = rawContent.split('|LINE_BREAK|').filter(l => l !== '');
-                if (lines.length > 0) {
-                    // If multiple lines, we'll use a safer approach:
-                    // Insert first line content at cursor, then insert other lines as siblings
-                    const firstLineHtml = lines[0];
-                    document.execCommand('insertHTML', false, firstLineHtml);
-
-                    if (lines.length > 1) {
-                        // For simplicity in this complex contentEditable, 
-                        // we can generate a temporary fragment of divs and insert it.
-                        const remainingHtml = lines.slice(1).map(l => `<div>${l}</div>`).join('');
-                        document.execCommand('insertHTML', false, remainingHtml);
+                const ensureLineStarted = () => {
+                    if (pendingBlockBreak) {
+                        flushCurrent(false);
+                    } else if (current === '' && hasExplicitBreak) {
+                        flushCurrent(true);
                     }
+                };
+
+                const walk = (node: Node, inPre = false) => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const raw = node.textContent || '';
+                        if (!raw) return;
+
+                        if (inPre) {
+                            const parts = raw.split(/\r?\n/);
+                            parts.forEach((part, idx) => {
+                                if (idx > 0) {
+                                    flushCurrent(true);
+                                }
+                                if (part !== '') {
+                                    ensureLineStarted();
+                                    current += escapeHtml(part);
+                                }
+                            });
+                            return;
+                        }
+
+                        // Ignore pure formatting/indentation whitespace containing newlines between HTML tags
+                        if (/^[\s\r\n]*[\r\n][\s\r\n]*$/.test(raw)) {
+                            return;
+                        }
+
+                        const normalized = raw.replace(/\r?\n\s*/g, ' ');
+                        if (normalized !== '') {
+                            ensureLineStarted();
+                            current += escapeHtml(normalized);
+                        }
+                        return;
+                    }
+
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+                    const el = node as HTMLElement;
+                    const tag = el.tagName.toLowerCase();
+                    if (IGNORE_TAGS.has(tag)) return;
+
+                    if (tag === 'br') {
+                        ensureLineStarted();
+                        if (current === '' && !hasExplicitBreak) {
+                            // First <br> inside an empty line represents an explicit blank line
+                            hasExplicitBreak = true;
+                        } else {
+                            flushCurrent(true);
+                        }
+                        return;
+                    }
+
+                    const style = (el.getAttribute('style') || '').toLowerCase();
+                    const elInPre = inPre || tag === 'pre' || style.includes('white-space: pre') || style.includes('white-space:pre');
+
+                    if (BLOCK_TAGS.has(tag)) {
+                        // Start a new line if previous inline content exists
+                        if (current !== '' || hasExplicitBreak || pendingBlockBreak) {
+                            flushCurrent(false);
+                        }
+                        const lineCountBefore = lines.length;
+                        el.childNodes.forEach(child => walk(child, elInPre));
+                        // If block only had a single trailing <br> after text, do not emit an extra empty line;
+                        // if block itself produced content or an explicit empty line, mark block end.
+                        if (current !== '' || hasExplicitBreak || lines.length > lineCountBefore) {
+                            pendingBlockBreak = true;
+                        }
+                        return;
+                    }
+
+                    const isBold = style.includes('font-weight: bold') || style.includes('font-weight:bold') || style.includes('font-weight: 700') || style.includes('font-weight:700') ||
+                        tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700';
+                    const isItalic = tag === 'i' || tag === 'em' || style.includes('font-style: italic') || style.includes('font-style:italic');
+                    const isUnderline = tag === 'u' || style.includes('text-decoration: underline') || style.includes('text-decoration:underline');
+
+                    const isLink = tag === 'a';
+                    const openTag = isLink
+                        ? `<a href="${escapeAttr(el.getAttribute('href') || '')}" contenteditable="false" class="text-blue-600 hover:underline cursor-pointer" style="color: #2563eb; text-decoration: underline;">`
+                        : `${isBold ? '<strong>' : ''}${isItalic ? '<em>' : ''}${isUnderline ? '<u>' : ''}`;
+                    const closeTag = isLink
+                        ? '</a>'
+                        : `${isUnderline ? '</u>' : ''}${isItalic ? '</em>' : ''}${isBold ? '</strong>' : ''}`;
+
+                    const hasBlockDescendant = Array.from(el.querySelectorAll('*')).some(desc =>
+                        BLOCK_TAGS.has(desc.tagName.toLowerCase()) || desc.tagName.toLowerCase() === 'br'
+                    );
+                    if (hasBlockDescendant && !isLink) {
+                        el.childNodes.forEach(child => walk(child, elInPre));
+                        return;
+                    }
+
+                    ensureLineStarted();
+                    const prevLen = current.length;
+                    if (openTag) current += openTag;
+                    const afterOpenLen = current.length;
+                    el.childNodes.forEach(child => walk(child, elInPre));
+                    if (current.length === afterOpenLen && !isLink) {
+                        // Avoid empty wrapper tags if nothing inline was emitted on this line
+                        current = current.slice(0, prevLen);
+                    } else if (closeTag) {
+                        current += closeTag;
+                    }
+                };
+
+                doc.body.childNodes.forEach(child => walk(child, false));
+                if (current !== '' || hasExplicitBreak) {
+                    lines.push(current);
                 }
-            } else if (plainText) {
-                const lines = plainText.split(/\r?\n/);
-                if (lines.length > 1) {
-                    // Insert first line content
-                    document.execCommand('insertText', false, lines[0]);
-                    // Insert others as divs
-                    const remainingHtml = lines.slice(1).map(l => `<div>${l || '<br>'}</div>`).join('');
-                    document.execCommand('insertHTML', false, remainingHtml);
+
+                // Trim accidental empty lines at very start/end
+                while (lines.length > 0 && lines[0] === '') lines.shift();
+                while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+                linesToInsert = lines;
+            }
+
+            const insertCleanLines = (lines: string[]) => {
+                if (lines.length === 0) return;
+                if (lines.length === 1) {
+                    document.execCommand('insertHTML', false, lines[0]);
                 } else {
-                    document.execCommand('insertText', false, plainText);
+                    const combinedHtml = lines[0] + lines.slice(1).map(l => `<div>${l || '<br>'}</div>`).join('');
+                    document.execCommand('insertHTML', false, combinedHtml);
+                }
+            };
+
+            if (linesToInsert.length > 0) {
+                insertCleanLines(linesToInsert);
+            } else if (plainText) {
+                const trimmedPlain = plainText.replace(/^(?:\r?\n)+|(?:\r?\n)+$/g, '');
+                if (!trimmedPlain) return;
+                const lines = trimmedPlain.split(/\r?\n/).map(l => escapeHtml(l));
+                if (lines.length > 1) {
+                    insertCleanLines(lines);
+                } else {
+                    document.execCommand('insertText', false, trimmedPlain);
                 }
             }
         }
