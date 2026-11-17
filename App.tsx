@@ -3221,7 +3221,7 @@ export default function App() {
                             />
                         )}
 
-                        <div onClick={(e) => toggleFolderExpand(e, task.id)} className="flex-1 text-lg text-gray-800 flex items-center gap-2 cursor-pointer transition-all duration-300 rounded-lg px-2 py-0.5">
+                        <div onClick={(e) => toggleFolderExpand(e, task.id)} className="flex-1 min-w-0 text-lg text-gray-800 flex items-center gap-2 cursor-pointer transition-all duration-300 rounded-lg px-2 py-0.5">
                             {!isEditing && (
                                 <div
                                     onClick={(e) => {
@@ -3262,7 +3262,7 @@ export default function App() {
                                             cancelInlineEdit();
                                         }
                                     }}
-                                    className="flex-1 bg-transparent border-b-2 border-indigo-500 focus:outline-none px-1 pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere outline-none min-h-[1.5em] leading-relaxed"
+                                    className="flex-1 min-w-0 bg-transparent border-b-2 border-indigo-500 focus:outline-none px-1 pb-1 whitespace-pre-wrap break-words overflow-wrap-anywhere outline-none min-h-[1.5em] leading-relaxed"
                                     autoFocus
                                     dir={task.title ? 'auto' : 'rtl'}
                                     placeholder={isSubTask ? "مهمة فرعية جديدة" : "مهمة جديدة"}
@@ -3270,7 +3270,7 @@ export default function App() {
                                 />
                             ) : (
                                 <span
-                                    className={`text-lg text-red-600 leading-relaxed transition-all duration-300 ${task.isCompleted ? 'line-through text-gray-400' : ''}`}
+                                    className={`min-w-0 max-w-full text-lg text-red-600 leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere transition-all duration-300 ${task.isCompleted ? 'line-through text-gray-400' : ''}`}
                                     style={isEmptyParent ? { opacity: 0.5 } : {}}
                                 >
                                     {task.title}
@@ -3278,7 +3278,7 @@ export default function App() {
                             )}
                             {task.isGoogleListFolder && <GoogleMark />}
                             {activeChildren.length > 0 && (
-                                <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-en mx-2 inline-block shadow-sm" style={{ fontFamily: 'Acme' }}>
+                                <span className="shrink-0 text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-en mx-2 inline-block shadow-sm" style={{ fontFamily: 'Acme' }}>
                                     {task.type === 'folder' ? activeChildren.length : activeChildren.filter(c => c.title.trim() !== '').length}
                                 </span>
                             )}
@@ -3421,7 +3421,7 @@ export default function App() {
                         <div className="flex-1 min-w-0">
                             {/* Sub-Task Full Line Click Target */}
                             <div
-                                className={`flex items-start gap-2 w-full ${(isSubTask || sortedChildren.length > 0) ? 'flex-1 h-full min-h-[32px]' : ''} ${isSubTask ? 'cursor-text' : (sortedChildren.length > 0 ? 'cursor-pointer' : '')}`}
+                                className={`flex items-start gap-2 w-full min-w-0 ${(isSubTask || sortedChildren.length > 0) ? 'flex-1 h-full min-h-[32px]' : ''} ${isSubTask ? 'cursor-text' : (sortedChildren.length > 0 ? 'cursor-pointer' : '')}`}
                                 onClick={(e) => {
                                     if (isSubTask && !isEditing) {
                                         handleStartInlineEdit(e, task);
@@ -3440,7 +3440,7 @@ export default function App() {
                                         suppressContentEditableWarning
                                         onPaste={(e) => handleInlinePasteImage(e, task.id)}
                                         dir={getDirection(inlineEditText)}
-                                        className={`w-full cursor-text bg-transparent border-b border-indigo-500 focus:outline-none text-gray-900 resize-none overflow-hidden whitespace-pre-wrap break-words overflow-wrap-anywhere outline-none py-1 leading-loose ${isSubTask ? 'text-base opacity-70' : 'text-lg'}`}
+                                        className={`w-full min-w-0 cursor-text bg-transparent border-b border-indigo-500 focus:outline-none text-gray-900 resize-none overflow-hidden whitespace-pre-wrap break-words overflow-wrap-anywhere outline-none py-1 leading-loose ${isSubTask ? 'text-base opacity-70' : 'text-lg'}`}
 
                                         onBlur={() => {
                                             if (!isEnterPressed.current) {
@@ -3541,13 +3541,13 @@ export default function App() {
                                                 handleStartInlineEdit(e, task);
                                             }
                                         }}
-                                        className={`w-full ${isSubTask ? 'cursor-text' : (sortedChildren.length > 0 ? 'cursor-pointer' : 'cursor-default')} whitespace-pre-wrap transition-all duration-500 ${isSubTask ? 'text-base opacity-50' : 'text-lg'} ${task.isCompleted ? 'text-gray-400 line-through decoration-gray-400' : 'text-gray-900'} ${sortedChildren.length > 0 ? 'font-bold underline decoration-1 underline-offset-4 decoration-indigo-200' : ''}`}
+                                        className={`w-full min-w-0 ${isSubTask ? 'cursor-text' : (sortedChildren.length > 0 ? 'cursor-pointer' : 'cursor-default')} whitespace-pre-wrap break-words overflow-wrap-anywhere transition-all duration-500 ${isSubTask ? 'text-base opacity-50' : 'text-lg'} ${task.isCompleted ? 'text-gray-400 line-through decoration-gray-400' : 'text-gray-900'} ${sortedChildren.length > 0 ? 'font-bold underline decoration-1 underline-offset-4 decoration-indigo-200' : ''}`}
                                         style={isEmptyParent ? { opacity: 0.5 } : {}}
                                         dir={getDirection(task.title)}
                                         dangerouslySetInnerHTML={{ __html: task.title || (isSubTask ? '<span class="italic text-gray-400">مهمة فرعية جديدة</span>' : '') }}
                                     />
                                 )}
-                                {originBadge && !isEditing && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">{originBadge.name}</span>}
+                                {originBadge && !isEditing && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">{originBadge.name}</span>}
                             </div>
                             {task.imageUrl && (
                                 <div
@@ -3599,7 +3599,7 @@ export default function App() {
                             <div className="absolute top-[12px] right-[-2px] w-[12px] h-[12px] border-r-2 border-t-2 border-gray-200/50 rounded-tr-lg" />
                             <div className="absolute top-[24px] bottom-[20px] right-[-2px] border-r-2 border-gray-200/50" />
                             <div className="absolute bottom-[8px] right-[-2px] w-[12px] h-[12px] border-r-2 border-b-2 border-gray-200/50 rounded-br-lg" />
-                            <div className="overflow-hidden">
+                            <div className="overflow-hidden min-w-0">
                                 <div className="flex flex-col pt-3 pb-2">
                                     {sortedChildren.map((child, idx) => (
                                         <div
@@ -4848,7 +4848,7 @@ export default function App() {
                                                     }
                                                     if (e.key === 'Escape') { e.preventDefault(); setInlineEditingId(null); }
                                                 }}
-                                                className={`flex-1 bg-transparent outline-none text-base text-red-500 ${/[\u0600-\u06FF]/.test(inlineEditText || col.title) ? 'font-bold' : 'font-medium'} transition-all relative empty:before:content-[attr(placeholder)] empty:before:text-red-200 empty:before:pointer-events-none`}
+                                                className={`flex-1 min-w-0 bg-transparent outline-none text-base text-red-500 whitespace-pre-wrap break-words overflow-wrap-anywhere ${/[\u0600-\u06FF]/.test(inlineEditText || col.title) ? 'font-bold' : 'font-medium'} transition-all relative empty:before:content-[attr(placeholder)] empty:before:text-red-200 empty:before:pointer-events-none`}
                                                 placeholder="اسم المجموعة"
                                                 onInput={(e) => setInlineEditText(e.currentTarget.textContent || '')}
                                                 autoFocus
@@ -4856,7 +4856,7 @@ export default function App() {
                                             />
                                         ) : (
                                             <span
-                                                className={`${/[\u0600-\u06FF]/.test(col.title) ? 'font-bold' : 'font-medium'} text-red-500 text-base flex-1`}
+                                                className={`${/[\u0600-\u06FF]/.test(col.title) ? 'font-bold' : 'font-medium'} text-red-500 text-base flex-1 min-w-0 break-words overflow-wrap-anywhere`}
                                                 onDoubleClick={(e) => {
                                                     if (col.id === '__ungrouped__') return;
                                                     e.stopPropagation();
@@ -4868,13 +4868,13 @@ export default function App() {
                                             </span>
                                         )}
                                         {findTask(col.id, tasks)?.isGoogleListFolder && <GoogleMark />}
-                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
                                             {getEffectiveTaskCount(col.tasks)}
                                         </span>
                                     </div>
                                     {/* Column Tasks - animated expand/collapse like list view */}
                                     <div className={`grid transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsedGroupIds.has(col.id) ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
-                                        <div className="overflow-hidden">
+                                        <div className="overflow-hidden min-w-0">
                                             <div
                                                 className="px-3 py-2 flex flex-col min-h-[40px]"
                                             >
@@ -5107,7 +5107,7 @@ export default function App() {
                                                                             placeholder="مهمة جديدة"
                                                                         />
                                                                     ) : (
-                                                                        <div className="flex items-start gap-1">
+                                                                        <div className="flex items-start gap-1 min-w-0">
                                                                             {(task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0) && (
                                                                                 <button
                                                                                     onClick={e => { e.stopPropagation(); toggleFolderExpand(e, task.id); }}
@@ -5117,12 +5117,12 @@ export default function App() {
                                                                                 </button>
                                                                             )}
                                                                             <div className="flex-1 min-w-0 flex items-start">
-                                                                                <span data-task-title dir="auto" className={`text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere cursor-text ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
+                                                                                <span data-task-title dir="auto" className={`min-w-0 max-w-full text-sm font-medium leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere cursor-text ${task.isCompleted ? 'line-through text-gray-300' : 'text-gray-700'}`}>
                                                                                     {task.title || <span className="italic text-gray-300">بدون عنوان</span>}
                                                                                 </span>
                                                                             </div>
                                                                             {task.children && task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length > 0 && (
-                                                                                <span className="text-[10px] text-gray-400/40 border border-gray-200/40 px-1.5 rounded-full font-en" style={{ fontFamily: 'Acme' }}>{task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length}</span>
+                                                                                <span className="flex-shrink-0 text-[10px] text-gray-400/40 border border-gray-200/40 px-1.5 rounded-full font-en" style={{ fontFamily: 'Acme' }}>{task.children.filter((c: Task) => !c.isCompleted && c.title.trim() !== '').length}</span>
                                                                             )}
                                                                         </div>
                                                                     )}
@@ -5147,8 +5147,8 @@ export default function App() {
                                                                     {/* Sub-tasks with decorative vertical line and hooks */}
                                                                     {task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0 && (
                                                                         <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${expandedFolderIds.has(task.id) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
-                                                                            <div className="overflow-hidden">
-                                                                                <div className="flex flex-col gap-1.5 pr-[4px] mr-[9px] relative pb-1">
+                                                                            <div className="overflow-hidden min-w-0">
+                                                                                <div className="flex flex-col gap-1.5 pr-[4px] mr-[9px] relative pb-1 min-w-0">
                                                                                     {/* Rounded "Quarter Square" connectors */}
                                                                                     <div className="absolute top-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-t-2 border-indigo-100 rounded-tr-md" />
                                                                                     <div className="absolute top-[10px] bottom-[10px] right-[-2px] border-r-2 border-indigo-100" />
@@ -5156,7 +5156,7 @@ export default function App() {
                                                                                     {task.children.filter((c: Task) => !c.isCompleted).map((child: Task) => (
                                                                                         <div
                                                                                             key={child.id}
-                                                                                            className={`flex items-start gap-2 py-1.5 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
+                                                                                            className={`flex items-start gap-2 py-1.5 min-w-0 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
                                                                                             onClick={e => handleStartInlineEdit(e, child)}
                                                                                             onContextMenu={e => {
                                                                                                 e.preventDefault();
@@ -5216,7 +5216,7 @@ export default function App() {
                                                                                                     placeholder="مهمة فرعية جديدة"
                                                                                                 />
                                                                                             ) : (
-                                                                                                <span dir="auto" className={`flex-1 text-xs leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${child.isCompleted ? 'line-through text-gray-300' : 'text-gray-500'}`}>
+                                                                                                <span dir="auto" className={`flex-1 min-w-0 text-xs leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere ${child.isCompleted ? 'line-through text-gray-300' : 'text-gray-500'}`}>
                                                                                                     {child.title || <span className="italic text-gray-300">مهمة فرعية جديدة</span>}
                                                                                                 </span>
                                                                                             )}
