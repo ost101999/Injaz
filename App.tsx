@@ -30,7 +30,13 @@ interface AppPreferences {
 
 export default function App() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [showUpdateResult, setShowUpdateResult] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'error'>('idle');
+    useEffect(() => {
+        if (!showUpdateResult || updateStatus === 'checking') return;
+        const timer = setTimeout(() => setShowUpdateResult(false), 5000);
+        return () => clearTimeout(timer);
+    }, [showUpdateResult, updateStatus]);
     const [updateErrorMsg, setUpdateErrorMsg] = useState('');
     const [currentVersion, setCurrentVersion] = useState<string | null>(null);
     const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -71,12 +77,9 @@ export default function App() {
             // Re-open the update banner (the red dot stays on until the app is updated)
             localStorage.removeItem('injaz_dismissed_update_version');
             setDismissedUpdateVersion(null);
-        } else if (updateStatus === 'error') {
-            alert('حدث خطأ أثناء فحص التحديث: ' + updateErrorMsg);
-        } else if (updateStatus === 'checking') {
-            alert('جاري البحث عن تحديثات...');
         } else {
-            checkForUpdates();
+            setShowUpdateResult(true);
+            if (updateStatus !== 'checking') checkForUpdates();
         }
     };
 
@@ -4631,6 +4634,7 @@ export default function App() {
                 <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex justify-end px-4">
                     <DevModeButton />
                     {/* Bell Icon */}
+                    <div className="relative">
                     <button
                         onClick={handleBellClick}
                         className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
@@ -4640,6 +4644,12 @@ export default function App() {
                         {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>}
                         {updateAvailable && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
                     </button>
+                    {showUpdateResult && !updateAvailable && (
+                        <div role="status" dir="rtl" className="absolute top-full right-0 z-50 mt-2 w-64 rounded-xl bg-white p-3 text-sm text-gray-700 shadow-lg border border-gray-100">
+                            {updateStatus === 'checking' ? 'جارٍ البحث عن تحديثات…' : updateStatus === 'up-to-date' ? 'البرنامج محدّث لآخر إصدار.' : updateStatus === 'error' ? `تعذّر فحص التحديثات: ${updateErrorMsg}` : 'جارٍ البحث عن تحديثات…'}
+                        </div>
+                    )}
+                    </div>
                 </div>
             </nav>
 
