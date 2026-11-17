@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { flushSync } from 'react-dom';
 import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit, GoogleTaskDeletion } from './types';
 import { Icons } from './components/Icons';
+import { DevModeButton } from './components/DevModeButton';
 import { GoogleMark } from './components/GoogleMark';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
@@ -4628,6 +4629,7 @@ export default function App() {
 
                 {/* Empty third column for balance */}
                 <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex justify-end px-4">
+                    <DevModeButton />
                     {/* Bell Icon */}
                     <button
                         onClick={handleBellClick}

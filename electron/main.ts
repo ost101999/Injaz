@@ -4,6 +4,7 @@ import path from 'path';
 import * as fs from 'fs';
 import { google } from 'googleapis';
 import http from 'http';
+import { pathToFileURL } from 'url';
 import url from 'url';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -357,6 +358,10 @@ function checkDevServer(): Promise<boolean> {
 }
 
 // Resolved once at startup — used by createMainWindow & createQuickAddWindow
+let devModeUrl: string | null = null;
+let devModeChild: ReturnType<typeof spawn> | null = null;
+let devModeBusy = false;
+let devStorage: Record<string, string> | null = null;
 let isDev = process.env.NODE_ENV === 'development';
 
 function createMainWindow() {
@@ -445,7 +450,9 @@ function createQuickAddWindow() {
     });
     registerWindowQuitShortcut(win);
 
-    if (isDev && !sharedPreview) {
+    if (devModeUrl) {
+        win.loadURL(`${devModeUrl}#quick-add`);
+    } else if (isDev && !sharedPreview) {
         win.loadURL('http://localhost:4000/#/quick-add');
     } else {
         win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'quick-add' });
@@ -647,6 +654,89 @@ if (!gotTheLock) {
     ipcMain.handle('firebase-session:clear', (event) => {
         requireMainWindow(event);
         try { fs.unlinkSync(sessionPath()); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    });
+
+    const devRecoveryFile = path.join(app.getPath('userData'), 'dev-mode-recovery.json');
+    ipcMain.on('dev-mode:persist', (event, data: Record<string, string>) => {
+        if (mainWindow && event.sender === mainWindow.webContents && devModeUrl) {
+            try { const temp = devRecoveryFile + '.tmp'; fs.writeFileSync(temp, JSON.stringify(data)); fs.renameSync(temp, devRecoveryFile); } catch (error) { console.error('Dev mode storage backup failed:', error); }
+        }
+    });
+    ipcMain.on('dev-mode:restore', (event) => {
+        if (mainWindow && event.sender === mainWindow.webContents) {
+            let saved = devStorage;
+            if (!saved && !devModeUrl) { try { saved = JSON.parse(fs.readFileSync(devRecoveryFile, 'utf8')); } catch {} }
+            event.returnValue = saved;
+            if (saved && !devModeUrl) { try { fs.unlinkSync(devRecoveryFile); } catch {} }
+            devStorage = null;
+        } else event.returnValue = null;
+    });
+    ipcMain.handle('dev-mode:status', () => ({ available: app.isPackaged, active: !!devModeUrl }));
+    app.on('will-quit', () => { devModeChild?.kill(); devModeChild = null; });
+    ipcMain.handle('dev-mode:toggle', async (event, storage: Record<string, string>) => {
+        if (!app.isPackaged || !mainWindow || event.sender !== mainWindow.webContents || devModeBusy) return { ok: false, error: 'تعذر تغيير وضع التطوير.' };
+        if ([...quickAddWindows].some(win => !win.isDestroyed() && win.isVisible())) return { ok: false, error: 'أغلق نافذة الإضافة السريعة أولًا.' };
+        devModeBusy = true;
+        const window = mainWindow;
+        const oldUrl = devModeUrl;
+        const installedUrl = pathToFileURL(path.join(__dirname, '../dist/index.html')).href;
+        let newChild: ReturnType<typeof spawn> | null = null;
+        try {
+            let target = installedUrl;
+            if (!oldUrl) {
+                const rootFile = path.join(app.getPath('userData'), 'project-root.txt');
+                const valid = (root: string) => !!root && fs.existsSync(path.join(root, 'vite.config.ts')) && fs.existsSync(path.join(root, 'node_modules/vite/bin/vite.js'));
+                let root = '';
+                try { root = fs.readFileSync(rootFile, 'utf8').trim(); } catch {}
+                if (!valid(root)) {
+                    const choice = await dialog.showOpenDialog(window, { title: 'اختر مجلد مشروع إنجاز', properties: ['openDirectory'] });
+                    if (choice.canceled) return { ok: false, canceled: true };
+                    root = choice.filePaths[0];
+                    if (!valid(root)) return { ok: false, error: 'مجلد المشروع غير صالح أو اعتماديات التطوير غير مثبتة.' };
+                    fs.writeFileSync(rootFile, root, 'utf8');
+                }
+                const port = await new Promise<number>((resolve, reject) => {
+                    const server = net.createServer(); server.once('error', reject);
+                    server.listen(0, '127.0.0.1', () => { const address = server.address(); if (!address || typeof address === 'string') return reject(new Error('تعذر اختيار منفذ.')); const port = address.port; server.close(() => resolve(port)); });
+                });
+                newChild = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'ignore', windowsHide: true });
+                let spawnError: Error | null = null;
+                newChild.on('error', error => { spawnError = error; });
+                const proc = newChild;
+                await new Promise<void>((resolve, reject) => {
+                    const end = Date.now() + 30000;
+                    const poll = () => {
+                        if (spawnError || proc.exitCode !== null || proc.signalCode !== null || Date.now() > end) return reject(spawnError || new Error('تعذر تشغيل خادم التطوير.'));
+                        const request = http.get(`http://127.0.0.1:${port}/`, response => { response.resume(); if (response.statusCode === 200) resolve(); else setTimeout(poll, 250); });
+                        request.setTimeout(500, () => request.destroy()); request.on('error', () => setTimeout(poll, 250));
+                    }; poll();
+                });
+                target = `http://127.0.0.1:${port}/`;
+            }
+            if ([...quickAddWindows].some(win => !win.isDestroyed() && win.isVisible())) {
+                newChild?.kill();
+                return { ok: false, error: 'أغلق نافذة الإضافة السريعة أولًا.' };
+            }
+            // Read the latest saved state after the server is ready, not before startup.
+            storage = await window.webContents.executeJavaScript(`Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; }))`);
+            // Hidden quick-note windows use the same storage origin and must be recreated.
+            for (const quick of quickAddWindows) if (!quick.isDestroyed()) quick.destroy();
+            devStorage = storage;
+            if (!oldUrl) fs.writeFileSync(devRecoveryFile, JSON.stringify(storage));
+            devModeUrl = oldUrl ? null : target;
+            const oldChild = devModeChild;
+            if (newChild) devModeChild = newChild;
+            setImmediate(async () => {
+                try { await window.loadURL(target); if (oldUrl) { oldChild?.kill(); devModeChild = null; } }
+                catch {
+                    newChild?.kill(); devModeChild = oldChild; devModeUrl = oldUrl; devStorage = storage;
+                    try { await window.loadURL(oldUrl || installedUrl); } catch {}
+                    dialog.showErrorBox('وضع التطوير', 'تعذر تحميل الواجهة.');
+                } finally { devModeBusy = false; }
+            });
+            return { ok: true };
+        } catch (error: any) { newChild?.kill(); return { ok: false, error: String(error.message || error) }; }
+        finally { if (!devStorage) devModeBusy = false; }
     });
 
     ipcMain.on('app-quit', () => {
