@@ -21,7 +21,7 @@ export function DevModeButton() {
             if (!result.ok) { if (!result.canceled) setError(result.error || 'تعذر تشغيل وضع التطوير.'); setBusy(false); }
         } catch { setError('تعذر تشغيل وضع التطوير.'); setBusy(false); }
     };
-    return <div className="relative flex items-center mr-2">
+    return <div className="relative flex items-center mr-2 ml-2">
         <button type="button" onClick={() => void toggle()} disabled={busy} title={status.active ? 'العودة للنسخة المثبتة' : 'تشغيل وضع التطوير'} aria-label={status.active ? 'العودة للنسخة المثبتة' : 'تشغيل وضع التطوير'} className={`flex items-center justify-center p-1 rounded-md transition disabled:opacity-50 ${status.active ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}>
             {busy ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" /> : <Code2 size={14} />}
         </button>
