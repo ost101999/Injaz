@@ -134,7 +134,7 @@ export const QuickAddWindow = () => {
         // ipcRenderer.send('hide-quick-note'); // No need for round trip
     };
 
-    // Double Shift detection
+    // Double right Shift detection
     const lastShiftTime = useRef(0);
 
     const toggleMaximize = () => {
@@ -144,12 +144,12 @@ export const QuickAddWindow = () => {
         }
     };
 
-    // Double Shift key handler
+    // Double right Shift key handler
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return; // Ignore hold-down repeats
 
-            if (e.key === 'Shift' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            if (e.code === 'ShiftRight' && !e.altKey && !e.ctrlKey && !e.metaKey) {
                 const now = Date.now();
                 if (now - lastShiftTime.current < 300) {
                     toggleMaximize();
@@ -163,34 +163,37 @@ export const QuickAddWindow = () => {
             }
         };
 
+        const resetShiftSequence = () => { lastShiftTime.current = 0; };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('blur', resetShiftSequence);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('blur', resetShiftSequence);
+        };
     }, [isMaximized]);
 
-    // Auto-maximize on overflow
+    // Expand only after an actual content change leaves at least one line out of view.
     useEffect(() => {
         const node = inputRef.current;
-        if (!node) return;
+        if (!node || !ipcRenderer || !isVisible || isMaximized) return;
 
-        const checkOverflow = () => {
-            if (!isMaximized && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 5) {
-                if (ipcRenderer) {
+        let frame = 0;
+        const observer = new MutationObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                const lineHeight = parseFloat(getComputedStyle(node).lineHeight) || 32;
+                if (node.clientHeight > 0 && node.scrollHeight - node.clientHeight >= lineHeight) {
                     ipcRenderer.invoke('toggle-quick-note-size', true);
                     setIsMaximized(true);
                 }
-            }
-        };
-
-        const observer = new MutationObserver(checkOverflow);
+            });
+        });
         observer.observe(node, { childList: true, subtree: true, characterData: true });
-
-        // Check initially in case of pasted content or fast typing
-        checkOverflow();
-
         return () => {
             observer.disconnect();
+            cancelAnimationFrame(frame);
         };
-    }, [isMaximized]);
+    }, [isVisible, isMaximized]);
 
     // Focus Listeners & Transparency Fix
     useEffect(() => {
