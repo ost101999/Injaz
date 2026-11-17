@@ -3924,8 +3924,8 @@ export default function App() {
         >
             {/* Notification */}
             {notification && (
-                <div className={`fixed top-24 inset-x-0 mx-auto max-w-fit -translate-x-24 z-[10000] pointer-events-none ${isNotificationExiting ? 'animate-fade-out' : 'animate-fadeIn'}`}>
-                    <div className={`px-6 py-4 rounded-xl shadow-2xl border pointer-events-auto min-w-[300px] bg-white ${notification.type === 'success'
+                <div className={`fixed top-24 inset-x-4 mx-auto w-fit max-w-[calc(100%-2rem)] z-[10000] pointer-events-none ${isNotificationExiting ? 'animate-fade-out' : 'animate-fadeIn'}`}>
+                    <div className={`px-6 py-4 rounded-xl shadow-2xl border pointer-events-auto w-full sm:min-w-[300px] bg-white ${notification.type === 'success'
                         ? 'border-l-4 border-l-green-500 border-gray-100'
                         : 'border-l-4 border-l-red-500 border-gray-100'
                         }`}>
@@ -3939,7 +3939,7 @@ export default function App() {
                                     <Icons.Close size={24} className="text-red-600" />
                                 </div>
                             )}
-                            <div>
+                            <div className="min-w-0 break-words">
                                 <h3 className={`font-bold text-base ${notification.type === 'success' ? 'text-gray-800' : 'text-gray-800'}`}>
                                     {notification.type === 'success' ? 'نجاح' : 'تنبيه'}
                                 </h3>

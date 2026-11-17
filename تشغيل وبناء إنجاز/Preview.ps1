@@ -36,7 +36,7 @@ try {
     & npm run compile:electron
     if ($LASTEXITCODE -ne 0) { throw 'Electron compilation failed.' }
     $env:INJAZ_SHARED_PREVIEW = '1'
-    & (Join-Path $root 'node_modules\.bin\concurrently.cmd') -k 'npm run build -- --watch' 'npx electron .'
+    & (Join-Path $root 'node_modules\.bin\concurrently.cmd') -k 'npm run build -- --watch' 'node electron/launch-electron.cjs .'
     if ($LASTEXITCODE -ne 0) { throw "Preview stopped with exit code $LASTEXITCODE." }
 } catch {
     Write-Host "`n$($_.Exception.Message)" -ForegroundColor Red
