@@ -675,7 +675,6 @@ if (!gotTheLock) {
     app.on('will-quit', () => { devModeChild?.kill(); devModeChild = null; });
     ipcMain.handle('dev-mode:toggle', async (event, storage: Record<string, string>) => {
         if (!app.isPackaged || !mainWindow || event.sender !== mainWindow.webContents || devModeBusy) return { ok: false, error: 'تعذر تغيير وضع التطوير.' };
-        if ([...quickAddWindows].some(win => !win.isDestroyed() && win.isVisible())) return { ok: false, error: 'أغلق نافذة الإضافة السريعة أولًا.' };
         devModeBusy = true;
         const window = mainWindow;
         const oldUrl = devModeUrl;
@@ -713,13 +712,9 @@ if (!gotTheLock) {
                 });
                 target = `http://127.0.0.1:${port}/`;
             }
-            if ([...quickAddWindows].some(win => !win.isDestroyed() && win.isVisible())) {
-                newChild?.kill();
-                return { ok: false, error: 'أغلق نافذة الإضافة السريعة أولًا.' };
-            }
             // Read the latest saved state after the server is ready, not before startup.
             storage = await window.webContents.executeJavaScript(`Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; }))`);
-            // Hidden quick-note windows use the same storage origin and must be recreated.
+            // Recreate quick-note windows after switching to the new storage origin.
             for (const quick of quickAddWindows) if (!quick.isDestroyed()) quick.destroy();
             devStorage = storage;
             if (!oldUrl) fs.writeFileSync(devRecoveryFile, JSON.stringify(storage));
