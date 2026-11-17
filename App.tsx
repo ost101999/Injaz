@@ -4631,10 +4631,10 @@ export default function App() {
                 </div>
 
                 {/* Empty third column for balance */}
-                <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex justify-end px-4">
+                <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex items-center justify-end px-4">
                     <DevModeButton />
                     {/* Bell Icon */}
-                    <div className="relative">
+                    <div className="relative flex items-center">
                     <button
                         onClick={handleBellClick}
                         className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
