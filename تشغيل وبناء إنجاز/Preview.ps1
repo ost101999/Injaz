@@ -1,3 +1,5 @@
+param([switch] $Check)
+
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 try {
@@ -6,6 +8,14 @@ try {
         throw 'Dependencies are missing. Open a terminal in the project folder and run npm install.'
     }
     $electronExe = Join-Path $root 'node_modules\electron\dist\electron.exe'
+    if (-not (Test-Path -LiteralPath $electronExe)) {
+        throw 'Electron is missing. Run npm install in the project folder.'
+    }
+    if ($Check) {
+        Write-Host 'Developer mode prerequisites are available.' -ForegroundColor Green
+        exit 0
+    }
+    Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
     $sharedProfile = Join-Path $env:APPDATA 'injaz---advanced-task-manager'
     $existingPreview = Get-CimInstance Win32_Process -Filter "Name='electron.exe'" | Where-Object {
         $_.ExecutablePath -eq $electronExe -and $_.CommandLine -like "*$sharedProfile*"
