@@ -32,11 +32,31 @@ export default function App() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [showUpdateResult, setShowUpdateResult] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'error'>('idle');
+    const updateBellContainerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (!showUpdateResult || updateStatus === 'checking') return;
-        const timer = setTimeout(() => setShowUpdateResult(false), 5000);
+        const timer = setTimeout(() => setShowUpdateResult(false), 3500);
         return () => clearTimeout(timer);
     }, [showUpdateResult, updateStatus]);
+    useEffect(() => {
+        if (!showUpdateResult || updateAvailable) return;
+        const handlePointerDownOutside = (e: MouseEvent) => {
+            if (updateBellContainerRef.current && !updateBellContainerRef.current.contains(e.target as Node)) {
+                setShowUpdateResult(false);
+            }
+        };
+        const handleEscapeKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setShowUpdateResult(false);
+            }
+        };
+        document.addEventListener('mousedown', handlePointerDownOutside, true);
+        document.addEventListener('keydown', handleEscapeKey, true);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDownOutside, true);
+            document.removeEventListener('keydown', handleEscapeKey, true);
+        };
+    }, [showUpdateResult, updateAvailable]);
     const [updateErrorMsg, setUpdateErrorMsg] = useState('');
     const [currentVersion, setCurrentVersion] = useState<string | null>(null);
     const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -4634,7 +4654,7 @@ export default function App() {
                 <div style={{ WebkitAppRegion: 'no-drag' } as any} className="flex items-center justify-end px-4">
                     <DevModeButton />
                     {/* Bell Icon */}
-                    <div className="relative flex items-center">
+                    <div ref={updateBellContainerRef} className="relative flex items-center">
                         <button
                             onClick={handleBellClick}
                             className={`relative p-2 rounded-lg transition ${updateAvailable ? 'text-red-500 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50 hover:text-indigo-600'}`}
