@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      // These launcher shortcuts are not source files and Windows security may
+      // block stat calls on them, causing the development watcher to crash.
+      watch: { ignored: ['**/تشغيل وبناء إنجاز/**'] },
     },
     plugins: [react()],
     define: {
