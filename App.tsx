@@ -1066,6 +1066,80 @@ export default function App() {
     }>({ isOpen: false, x: 0, y: 0, listId: null });
 
 
+    useLayoutEffect(() => {
+        const margin = 10;
+        const zoom = preferences.zoom || 1;
+        const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)));
+        const place = () => {
+            const root = document.querySelector<HTMLElement>('[data-context-menu]');
+            const listMenu = document.querySelector<HTMLElement>('[data-list-context-menu]');
+            const fitRoot = (node: HTMLElement, x: number, y: number) => {
+                node.style.maxWidth = `${(window.innerWidth - margin * 2) / zoom}px`;
+                const panel = node.querySelector<HTMLElement>('[data-menu-panel]') || node;
+                panel.style.maxHeight = `${(window.innerHeight - margin * 2) / zoom}px`;
+                panel.style.overflowY = 'auto';
+                node.style.left = `${x}px`;
+                node.style.top = `${y}px`;
+                const rect = node.getBoundingClientRect();
+                node.style.left = `${clamp(x * zoom, margin, window.innerWidth - rect.width - margin) / zoom}px`;
+                node.style.top = `${clamp(y * zoom, margin, window.innerHeight - rect.height - margin) / zoom}px`;
+            };
+            if (root) {
+                const panel = root.querySelector<HTMLElement>('[data-menu-panel]')!;
+                const submenu = root.querySelector<HTMLElement>('[data-submenu]');
+                const folders = root.querySelector<HTMLElement>('[data-folder-submenu]');
+                const trigger = panel.querySelector<HTMLElement>(`[data-submenu-trigger="${activeSubmenu}"]`);
+                const folderAnchor = submenu?.querySelector<HTMLElement>('[data-folder-anchor="true"]');
+                const visiblePanels = [panel];
+                panel.style.visibility = '';
+                fitRoot(root, contextMenu.x, contextMenu.y);
+
+                const positionChild = (child: HTMLElement, parent: HTMLElement, anchor: HTMLElement) => {
+                    child.style.visibility = '';
+                    child.dataset.drilldown = 'false';
+                    child.style.maxWidth = `${(window.innerWidth - margin * 2) / zoom}px`;
+                    child.style.maxHeight = `${(window.innerHeight - margin * 2) / zoom}px`;
+                    child.style.left = '0px';
+                    child.style.top = '0px';
+
+                    const parentRect = parent.getBoundingClientRect();
+                    const { top: anchorTop } = anchor.getBoundingClientRect();
+                    const childRect = child.getBoundingClientRect();
+                    const left = parentRect.left - childRect.width;
+                    const right = parentRect.right;
+                    const fits = (x: number) =>
+                        x >= margin - 0.5 && x + childRect.width <= window.innerWidth - margin + 0.5 &&
+                        visiblePanels.every(node => {
+                            const rect = node.getBoundingClientRect();
+                            return x + childRect.width <= rect.left + 0.5 || x >= rect.right - 0.5;
+                        });
+
+                    // On a narrow window the child replaces the previous panels and offers a Back action.
+                    const side = fits(left) ? left : fits(right) ? right : null;
+                    if (side === null) {
+                        child.dataset.drilldown = 'true';
+                        visiblePanels.forEach(node => { node.style.visibility = 'hidden'; });
+                        visiblePanels.length = 0;
+                    }
+                    const { width, height } = child.getBoundingClientRect();
+                    const targetX = clamp(side ?? parentRect.left, margin, window.innerWidth - width - margin);
+                    const targetY = clamp(side === null ? parentRect.top : anchorTop, margin, window.innerHeight - height - margin);
+                    child.style.left = `${(targetX - childRect.left) / zoom}px`;
+                    child.style.top = `${(targetY - childRect.top) / zoom}px`;
+                    visiblePanels.push(child);
+                };
+                if (submenu && trigger) {
+                    positionChild(submenu, panel, trigger);
+                    if (folders && folderAnchor) positionChild(folders, submenu, folderAnchor);
+                }
+            }
+            if (listMenu) fitRoot(listMenu, listContextMenu.x, listContextMenu.y);
+        };
+        place();
+        window.addEventListener('resize', place);
+        return () => window.removeEventListener('resize', place);
+    }, [contextMenu, listContextMenu, activeSubmenu, moveTargetListId, preferences.zoom, lists, tasks]);
+
     // --- MULTI-SELECTION STATE ---
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
     const [isSelecting, setIsSelecting] = useState(false);
@@ -5618,47 +5692,19 @@ export default function App() {
                         data-context-menu
                         style={{
                             position: 'fixed',
-                            left: (() => {
-                                const menuWidth = 180;
-                                const padding = 10;
-                                // If near right edge, shift left
-                                if (contextMenu.x + menuWidth > window.innerWidth) {
-                                    return Math.max(padding, window.innerWidth - menuWidth - padding);
-                                }
-                                return Math.max(padding, contextMenu.x);
-                            })(),
-                            top: (() => {
-                                let approxHeight = 350;
-                                if (contextMenu.source === 'priority-dot') approxHeight = 180;
-                                if (contextMenu.source === 'widgets-bg') approxHeight = 70;
-                                const padding = 10;
-                                const hasSpaceBelow = contextMenu.y + approxHeight < window.innerHeight;
-                                // If near bottom, show above the click point
-                                if (!hasSpaceBelow) {
-                                    return Math.max(padding, contextMenu.y - approxHeight);
-                                }
-                                return contextMenu.y;
-                            })(),
+                            left: contextMenu.x,
+                            top: contextMenu.y,
                             zIndex: 1200
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="animate-slideDownBlur"
                     >
-                        <style>{`
-                            @keyframes submenuSlide {
-                                from { opacity: 0; transform: translateX(10px); }
-                                to { opacity: 1; transform: translateX(0); }
-                            }
-                            .animate-submenu {
-                                animation: submenuSlide 0.2s ease-out forwards;
-                            }
-                        `}</style>
                         <div
                             className="relative"
                             onMouseLeave={() => {
                                 // Start grace period for closing
                                 submenuTimeoutRef.current = setTimeout(() => {
                                     setActiveSubmenu(null);
+                                    setMoveTargetListId(null);
                                 }, 300);
                             }}
                             onMouseEnter={() => {
@@ -5670,7 +5716,7 @@ export default function App() {
                             }}
                         >
                             {/* Main menu panel */}
-                            <div className="bg-white rounded-xl shadow-2xl border border-gray-100 min-w-[140px] overflow-hidden animate-context-menu">
+                            <div data-menu-panel className="bg-white rounded-xl shadow-2xl border border-gray-100 min-w-[140px] overflow-hidden context-panel-enter">
                                 <div className="px-3 py-2 text-[10px] text-red-400 font-bold border-b border-gray-50 uppercase tracking-wider">خيارات</div>
                                 <div className="p-1">
                                     {/* Reorder Options (Generic for all, mostly used for Groups) - ONLY SHOW IF TRIGGERED BY BUTTON */}
@@ -5844,6 +5890,7 @@ export default function App() {
                                                     )}
 
                                                     <div
+                                                        data-submenu-trigger="priority"
                                                         onMouseEnter={() => {
                                                             if (submenuTimeoutRef.current) clearTimeout(submenuTimeoutRef.current);
                                                             setActiveSubmenu('priority');
@@ -5855,6 +5902,7 @@ export default function App() {
                                                         <Icons.ChevronLeft size={14} className="text-gray-300" />
                                                     </div>
                                                     <div
+                                                        data-submenu-trigger="list"
                                                         onMouseEnter={() => {
                                                             if (submenuTimeoutRef.current) clearTimeout(submenuTimeoutRef.current);
                                                             setActiveSubmenu('list');
@@ -5904,53 +5952,11 @@ export default function App() {
                             {/* Submenu floating panel (appears to the left/west, aligned with the item) */}
                             {activeSubmenu && (
                                 <div
-                                    className="absolute bg-white rounded-xl shadow-2xl border border-gray-100 p-2 min-w-[140px] animate-submenu"
-                                    style={(() => {
-                                        const menuX = Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170));
-                                        // Prefer left side: show to left unless there's not enough space (< 160px)
-                                        const showToLeft = menuX > 160;
-
-                                        // Calculate dynamic top to align "قصاد العنوان"
-                                        // Header (~31px) + P1 padding (4px) + P0.5 padding (2px) = 37px
-                                        let offsetTop = 37;
-
-                                        // If reorder options are present (source is trigger)
-                                        if (contextMenu.taskId && contextMenu.source === 'trigger') {
-                                            offsetTop += 34; // Height of reorder box + margin
-                                        }
-
-                                        // If it's a folder, Add Task and Edit Name are present
-                                        const isFolder = contextMenu.taskId && findTask(contextMenu.taskId, tasks)?.type === 'folder';
-                                        if (isFolder) {
-                                            offsetTop += 37; // "إضافة مهمة" height (with margin/border)
-                                            offsetTop += 36; // "تعديل الاسم" height
-                                        }
-
-                                        // Final position based on which submenu is active
-                                        // Each item is ~36px tall
-                                        const finalTop = activeSubmenu === 'priority' ? offsetTop : offsetTop + 36;
-
-                                        return {
-                                            right: showToLeft ? '100%' : 'auto',
-                                            left: showToLeft ? 'auto' : '100%',
-                                            marginRight: showToLeft ? '8px' : '0',
-                                            marginLeft: showToLeft ? '0' : '8px',
-                                            top: `${finalTop}px`
-                                        };
-                                    })()}
+                                    key={activeSubmenu}
+                                    data-submenu
+                                    className="absolute w-max overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 min-w-[140px] context-panel-enter"
                                 >
-                                    {/* Invisible Bridge to bridge the gap */}
-                                    <div
-                                        className="absolute top-0 bottom-0 w-4 bg-transparent"
-                                        style={(() => {
-                                            const menuX = Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170));
-                                            const showToLeft = menuX > 160;
-                                            return {
-                                                left: showToLeft ? 'auto' : '-16px',
-                                                right: showToLeft ? '-16px' : 'auto',
-                                            };
-                                        })()}
-                                    />
+                                    <button type="button" data-menu-back className="px-3 py-2 mb-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => { setActiveSubmenu(null); setMoveTargetListId(null); }}>رجوع</button>
                                     {activeSubmenu === 'priority' && (() => {
                                         const t = contextMenu.taskId ? findTask(contextMenu.taskId, tasks) : null;
                                         return (
@@ -5976,6 +5982,7 @@ export default function App() {
                                                 {lists.map(l => (
                                                     <button
                                                         key={l.id}
+                                                        data-folder-anchor={moveTargetListId === l.id ? "true" : undefined}
                                                         onMouseEnter={() => setMoveTargetListId(l.id)}
                                                         onFocus={() => setMoveTargetListId(l.id)}
                                                         onClick={() => {
@@ -5992,39 +5999,37 @@ export default function App() {
                                                     </button>
                                                 ))}
                                             </div>
-                                            {moveTargetListId && (
-                                                <div className="absolute top-0 w-56 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 animate-fadeIn"
-                                                    ref={node => {
-                                                        if (!node) return;
-                                                        const zoom = preferences.zoom || 1;
-                                                        node.style.maxHeight = `${Math.min(256, (window.innerHeight - 20) / zoom)}px`;
-                                                        node.style.top = '0px';
-                                                        const rect = node.getBoundingClientRect();
-                                                        node.style.top = `${Math.min(0, (window.innerHeight - 10 - rect.bottom) / zoom)}px`;
-                                                    }}
-                                                    style={Math.max(10, Math.min(contextMenu.x, window.innerWidth - 170)) > 390 ? { right: '100%' } : { left: '100%' }}>
-                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId)
-                                                        .map(folder => (
-                                                            <button
-                                                                key={folder.id}
-                                                                onClick={() => {
-                                                                    if (contextMenu.taskId) updateTask(contextMenu.taskId, { listId: moveTargetListId, parentId: folder.id });
-                                                                    setContextMenu(prev => ({ ...prev, isOpen: false }));
-                                                                    setActiveSubmenu(null);
-                                                                    setMoveTargetListId(null);
-                                                                }}
-                                                                className="w-full px-3 py-2 text-xs rounded-lg hover:bg-indigo-50 flex items-center gap-2 transition-colors"
-                                                            >
-                                                                <Icons.Folder size={14} className="text-indigo-400" />
-                                                                <span className="font-bold text-gray-700 whitespace-nowrap truncate">{folder.title}</span>
-                                                            </button>
-                                                        ))}
-                                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).length === 0 && (
-                                                        <div className="px-3 py-4 text-center text-[10px] text-gray-400 italic">لا توجد مجموعات</div>
-                                                    )}
-                                                </div>
-                                            )}
                                         </div>
+                                    )}
+                                </div>
+                            )}
+                            {activeSubmenu === 'list' && moveTargetListId && (
+                                <div key={moveTargetListId} data-folder-submenu className="absolute top-0 w-56 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 context-panel-enter">
+                                    <div data-menu-back className="px-2 mb-1">
+                                        <button type="button" className="px-2 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => setMoveTargetListId(null)}>رجوع</button>
+                                        <button type="button" className="px-2 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => {
+                                            if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, moveTargetListId);
+                                            setMoveTargetListId(null);
+                                        }}>نقل للقائمة</button>
+                                    </div>
+                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId)
+                                        .map(folder => (
+                                            <button
+                                                key={folder.id}
+                                                onClick={() => {
+                                                    if (contextMenu.taskId) updateTask(contextMenu.taskId, { listId: moveTargetListId, parentId: folder.id });
+                                                    setContextMenu(prev => ({ ...prev, isOpen: false }));
+                                                    setActiveSubmenu(null);
+                                                    setMoveTargetListId(null);
+                                                }}
+                                                className="w-full px-3 py-2 text-xs rounded-lg hover:bg-indigo-50 flex items-center gap-2 transition-colors"
+                                            >
+                                                <Icons.Folder size={14} className="text-indigo-400" />
+                                                <span className="font-bold text-gray-700 whitespace-nowrap truncate">{folder.title}</span>
+                                            </button>
+                                        ))}
+                                    {tasks.filter(t => t.listId === moveTargetListId && t.type === 'folder' && t.id !== contextMenu.taskId).length === 0 && (
+                                        <div className="px-3 py-4 text-center text-[10px] text-gray-400 italic">لا توجد مجموعات</div>
                                     )}
                                 </div>
                             )}
@@ -6097,8 +6102,8 @@ export default function App() {
                             data-list-context-menu
                             className="fixed z-[85] bg-white rounded-xl shadow-2xl border border-gray-100 py-2 min-w-[160px] animate-context-menu"
                             style={{
-                                top: Math.min(listContextMenu.y, window.innerHeight - 120),
-                                left: Math.min(listContextMenu.x, window.innerWidth - 180)
+                                top: listContextMenu.y,
+                                left: listContextMenu.x
                             }}
                         >
                             <button
