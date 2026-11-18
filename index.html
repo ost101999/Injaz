@@ -250,6 +250,21 @@
       display: none;
     }
 
+    [data-submenu],
+    [data-folder-submenu] {
+      position: absolute;
+      overflow-y: auto;
+    }
+
+    [data-submenu] {
+      width: max-content;
+      min-width: 140px;
+    }
+
+    [data-folder-submenu] {
+      width: 224px;
+    }
+
     [data-drilldown="true"] > [data-menu-back] {
       display: block;
     }

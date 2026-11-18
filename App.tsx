@@ -1067,6 +1067,7 @@ export default function App() {
 
 
     useLayoutEffect(() => {
+        if (!contextMenu.isOpen && !listContextMenu.isOpen) return;
         const margin = 10;
         const zoom = preferences.zoom || 1;
         const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)));
@@ -1105,8 +1106,9 @@ export default function App() {
                     const parentRect = parent.getBoundingClientRect();
                     const { top: anchorTop } = anchor.getBoundingClientRect();
                     const childRect = child.getBoundingClientRect();
-                    const left = parentRect.left - childRect.width;
-                    const right = parentRect.right;
+                    const gap = 5;
+                    const left = parentRect.left - childRect.width - gap;
+                    const right = parentRect.right + gap;
                     const fits = (x: number) =>
                         x >= margin - 0.5 && x + childRect.width <= window.innerWidth - margin + 0.5 &&
                         visiblePanels.every(node => {
@@ -1136,8 +1138,14 @@ export default function App() {
             if (listMenu) fitRoot(listMenu, listContextMenu.x, listContextMenu.y);
         };
         place();
+        const observer = new ResizeObserver(place);
+        document.querySelectorAll('[data-menu-panel], [data-list-context-menu], [data-submenu], [data-folder-submenu]')
+            .forEach(panel => observer.observe(panel));
         window.addEventListener('resize', place);
-        return () => window.removeEventListener('resize', place);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', place);
+        };
     }, [contextMenu, listContextMenu, activeSubmenu, moveTargetListId, preferences.zoom, lists, tasks]);
 
     // --- MULTI-SELECTION STATE ---
@@ -5700,7 +5708,9 @@ export default function App() {
                     >
                         <div
                             className="relative"
-                            onMouseLeave={() => {
+                            onMouseLeave={(event) => {
+                                const drilldown = event.currentTarget.querySelector<HTMLElement>('[data-drilldown="true"]:last-child');
+                                if (drilldown?.style.visibility === '') return;
                                 // Start grace period for closing
                                 submenuTimeoutRef.current = setTimeout(() => {
                                     setActiveSubmenu(null);
@@ -5954,7 +5964,7 @@ export default function App() {
                                 <div
                                     key={activeSubmenu}
                                     data-submenu
-                                    className="absolute w-max overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 min-w-[140px] context-panel-enter"
+                                    className="bg-white rounded-xl shadow-2xl border border-gray-100 p-2 context-panel-enter"
                                 >
                                     <button type="button" data-menu-back className="px-3 py-2 mb-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => { setActiveSubmenu(null); setMoveTargetListId(null); }}>رجوع</button>
                                     {activeSubmenu === 'priority' && (() => {
@@ -6004,7 +6014,7 @@ export default function App() {
                                 </div>
                             )}
                             {activeSubmenu === 'list' && moveTargetListId && (
-                                <div key={moveTargetListId} data-folder-submenu className="absolute top-0 w-56 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-100 p-2 context-panel-enter">
+                                <div key={moveTargetListId} data-folder-submenu className="bg-white rounded-xl shadow-2xl border border-gray-100 p-2 context-panel-enter">
                                     <div data-menu-back className="px-2 mb-1">
                                         <button type="button" className="px-2 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => setMoveTargetListId(null)}>رجوع</button>
                                         <button type="button" className="px-2 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => {
