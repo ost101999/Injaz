@@ -246,6 +246,25 @@
       animation: slideDownBlur 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
     }
 
+    [data-menu-back] {
+      display: none;
+    }
+
+    [data-drilldown="true"] > [data-menu-back] {
+      display: block;
+    }
+
+    @keyframes contextPanelEnter {
+      from { opacity: 0; filter: blur(3px); }
+      to { opacity: 1; filter: blur(0); }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .context-panel-enter {
+        animation: contextPanelEnter 180ms ease-out;
+      }
+    }
+
     .animate-fade-out {
       animation: fadeOut 0.2s ease-out forwards;
     }
