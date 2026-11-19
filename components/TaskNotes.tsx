@@ -52,10 +52,22 @@ function preparePastedNotes(html: string, plainText: string) {
     indentation.forEach(node => node.remove());
     const container = document.createElement('div');
     container.innerHTML = safeNotes(documentFragment.body.innerHTML);
+    // Copying a complete line often includes its terminating newline. It is a
+    // clipboard boundary, not an extra empty line to insert at the caret.
+    const completeSingleLine = /^[^\r\n]+\r?\n$/.test(plainText);
+    if (completeSingleLine) {
+        const last = container.lastElementChild;
+        if (last && /^(DIV|P)$/.test(last.tagName) && !last.textContent?.trim() &&
+            !last.querySelector('img, ol, ul')) last.remove();
+        const trailingBreak = container.querySelector('br:last-child');
+        if (trailingBreak && !trailingBreak.nextSibling &&
+            (trailingBreak.parentElement === container ||
+                trailingBreak.parentElement === container.lastElementChild)) trailingBreak.remove();
+    }
     if (!/^[\r\n]/.test(plainText)) {
         while (container.firstChild instanceof HTMLBRElement) container.firstChild.remove();
     }
-    if (!/[\r\n]$/.test(plainText)) {
+    if (completeSingleLine || !/[\r\n]$/.test(plainText)) {
         while (container.lastChild instanceof HTMLBRElement) container.lastChild.remove();
     }
     const only = container.firstElementChild;
@@ -230,7 +242,8 @@ export function TaskNotes({ title, initial, save, close }: {
                             return;
                         }
                     }
-                    format('insertText', event.clipboardData.getData('text/plain'));
+                    const plainText = event.clipboardData.getData('text/plain');
+                    format('insertText', /^[^\r\n]+\r?\n$/.test(plainText) ? plainText.replace(/\r?\n$/, '') : plainText);
                 }}
                 onPointerDown={() => { caretColumn.current = null; }}
                 onBlur={() => { caretColumn.current = null; }}
