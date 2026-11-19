@@ -749,18 +749,6 @@ export const QuickAddWindow = () => {
             setTimeout(checkAndUpdateContainerDir, 0);
         }
 
-        // Immediate direction switch from typed character
-        // This fires BEFORE the character appears, giving instant caret repositioning
-        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const arabicChar = /[\u0600-\u06FF]/.test(e.key);
-            const latinChar = /[a-zA-Z]/.test(e.key);
-            if (arabicChar) {
-                setContainerDir('rtl');
-            } else if (latinChar) {
-                setContainerDir('ltr');
-            }
-        }
-
         // --- ENHANCED ENTER HANDLER ---
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1374,16 +1362,16 @@ export const QuickAddWindow = () => {
                     if (latinLetterRegex.test(text[i])) { isArabic = false; break; }
                 }
 
+                const direction = isArabic ? 'rtl' : 'ltr';
+                const directionChanged = el.dir !== direction;
+                el.dir = direction;
+                el.style.direction = direction;
+                el.style.textAlign = 'start';
                 if (isArabic) {
-                    el.style.direction = 'rtl';
-                    el.style.textAlign = 'right';
 
                     // 2. DIGIT CONVERSION (English to Hindi)
                     safeReplaceDigits(el, digitMap, /[0-9]/g);
                 } else {
-                    el.style.direction = 'ltr';
-                    el.style.textAlign = 'left';
-
                     // 2. DIGIT CONVERSION (Hindi to English)
                     const revDigitMap: { [key: string]: string } = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
                     safeReplaceDigits(el, revDigitMap, /[٠-٩]/g);
@@ -1404,7 +1392,10 @@ export const QuickAddWindow = () => {
                         n = n.parentNode;
                     }
                     if (activeLine && activeLine === el) {
-                        setContainerDir(isArabic ? 'rtl' : 'ltr');
+                        if (directionChanged && sel.isCollapsed && sel.focusNode) {
+                            sel.collapse(sel.focusNode, sel.focusOffset);
+                        }
+                        setContainerDir(direction);
                     }
                 }
 

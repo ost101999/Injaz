@@ -227,6 +227,22 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
         const quick = '[contenteditable="true"]';
         await page.waitForSelector(quick);
         assert.match(await page.$eval(quick, element => getComputedStyle(element).fontFamily), /Amiri/);
+        await page.focus(quick);
+        await page.keyboard.type('English');
+        for (const char of 'English') await page.keyboard.press('Backspace');
+        for (const char of 'عربي') await page.keyboard.sendCharacter(char);
+        assert.equal(await text(quick), 'عربي');
+        assert.deepEqual(await page.$eval(quick, element => {
+            const selection = getSelection();
+            const caret = selection.getRangeAt(0).getBoundingClientRect();
+            const line = document.createRange();
+            line.selectNodeContents(selection.focusNode);
+            return {
+                direction: getComputedStyle(selection.focusNode.parentElement).direction,
+                atEnd: selection.focusOffset === selection.focusNode.length,
+                atLeftEdge: Math.abs(caret.left - line.getBoundingClientRect().left) < 2
+            };
+        }), { direction: 'rtl', atEnd: true, atLeftEdge: true });
         await exerciseEditor(quick);
         if (process.env.RENUMBER_ONLY) {
             assert.deepEqual(errors, []);
