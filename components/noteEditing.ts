@@ -167,15 +167,49 @@ function noteLines(root: HTMLElement): NoteLine[] {
     return lines;
 }
 
+function decimalDigits(digits: string) {
+    return digits.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) & 15));
+}
+
+export function repairSavedNumbering(editor: HTMLElement) {
+    const lines = noteLines(editor);
+    const styledMarker = (line: NoteLine) => {
+        const marker = line.text.match(numberPrefix);
+        return marker && line.nodes.find(node => node.data.trimStart().startsWith(marker[2]) &&
+            node.parentElement?.style.opacity === '0.5') ? marker : null;
+    };
+    let changed = false;
+    for (let i = 2; i < lines.length; i++) {
+        const previous = styledMarker(lines[i - 2]);
+        const current = styledMarker(lines[i]);
+        const between = lines[i - 1].text;
+        if (!previous || !current || !between.trim() || numberPrefix.test(between) || previous[3] !== current[3]) continue;
+        let expected = BigInt(decimalDigits(current[2]));
+        if (expected !== BigInt(decimalDigits(previous[2])) + 2n) continue;
+        for (; i < lines.length; i++, expected++) {
+            const marker = styledMarker(lines[i]);
+            if (!marker || marker[3] !== current[3] || BigInt(decimalDigits(marker[2])) !== expected) break;
+            const number = lines[i].nodes.find(node => node.data.trimStart().startsWith(marker[2]) &&
+                node.parentElement?.style.opacity === '0.5')!;
+            const base = marker[2].charCodeAt(0) & ~15;
+            const replacement = String(expected - 1n).replace(/\d/g, digit => String.fromCharCode(base + Number(digit)));
+            number.replaceData(number.data.indexOf(marker[2]), marker[2].length, replacement);
+            changed = true;
+        }
+        i--;
+    }
+    return changed;
+}
+
 export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEvent): boolean {
-    if (!['Backspace', 'Delete'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false;
+    if (!['Backspace', 'Delete'].includes(event.key) || event.metaKey || event.altKey || event.isComposing) return false;
     const selection = window.getSelection();
     if (!selection?.rangeCount || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return false;
     const range = selection.getRangeAt(0);
     const lines = noteLines(editor);
     const rangeStart = textOffset(editor, range.startContainer, range.startOffset);
-    let index = lines.findIndex(line => line.nodes.some(node => node === range.startContainer || node.parentElement?.contains(range.startContainer)));
-    if (!selection.isCollapsed) {
+    let index = lines.findIndex(line => line.nodes.some(node => node === range.startContainer));
+    if (!selection.isCollapsed || !(range.startContainer instanceof Text)) {
         const boundary = lines.findIndex((line, i) => i > index && line.nodes.length > 0 &&
             textOffset(editor, line.nodes[0], 0) === rangeStart);
         if (boundary >= 0) index = boundary;
@@ -189,13 +223,17 @@ export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEve
     const lineStart = textOffset(editor, line.nodes[0], 0);
     const digitStart = lineStart + marker[1].length;
     const digitEnd = digitStart + marker[2].length;
-    const deletedStart = selection.isCollapsed ? start - (event.key === 'Backspace' ? 1 : 0) : start;
+    const markerEnd = lineStart + marker[0].length;
+    const spacingEnd = markerEnd + (line.text.slice(marker[0].length).match(/^[\t \u00a0]*/)?.[0].length || 0);
+    const wordBackspace = event.ctrlKey && event.key === 'Backspace' && start > digitStart && start <= spacingEnd;
+    if (event.ctrlKey && selection.isCollapsed && !wordBackspace) return false;
+    const deletedStart = wordBackspace ? digitStart : selection.isCollapsed ? start - (event.key === 'Backspace' ? 1 : 0) : start;
     const deletedEnd = selection.isCollapsed ? end + (event.key === 'Delete' ? 1 : 0) : end;
-    const deletingSeparator = selection.isCollapsed && deletedStart === lineStart + marker[0].length - 1 &&
+    const deletingSeparator = deletedStart === markerEnd - 1 &&
         deletedEnd === lineStart + marker[0].length;
     const wholeLine = !selection.isCollapsed && deletedStart <= lineStart && deletedEnd >= lineStart + line.text.length &&
         deletedEnd <= lineStart + line.text.length + 1;
-    if (!wholeLine && !deletingSeparator && (deletedStart > digitStart || deletedEnd < digitEnd || deletedStart < lineStart || deletedEnd > lineStart + marker[0].length)) return false;
+    if (!wholeLine && !deletingSeparator && (deletedStart > digitStart || deletedEnd < digitEnd || deletedStart < lineStart || deletedEnd > spacingEnd)) return false;
 
     const clone = editor.cloneNode(true) as HTMLElement;
     const copyLines = noteLines(clone);
@@ -205,7 +243,7 @@ export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEve
         remove.setEnd(clonePosition(editor, clone, range.endContainer), range.endOffset);
     } else {
         remove.setStart(copyLines[index].nodes[0], marker[1].length);
-        let remaining = marker[0].length - marker[1].length;
+        let remaining = Math.max(markerEnd, deletedEnd) - digitStart;
         for (const node of copyLines[index].nodes) {
             const skip = node === copyLines[index].nodes[0] ? marker[1].length : 0;
             const count = Math.min(remaining, node.length - skip);
@@ -231,7 +269,7 @@ export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEve
     event.preventDefault();
     selection.selectAllChildren(editor);
     document.execCommand('insertHTML', false, clone.innerHTML);
-    selection.collapse(...textPosition(editor, digitStart, true));
+    selection.collapse(...textPosition(editor, digitStart, false));
     return true;
 }
 
