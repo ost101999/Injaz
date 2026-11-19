@@ -89,6 +89,25 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
                 assert.equal(await text(editor), spaces === 0 ? 'word\nnext' : 'word' + ' '.repeat(spaces) + 'next');
                 assert.equal(await page.$eval(editor, element => element.querySelector('[style*="background-color"]').textContent.trim()), spaces === 1 ? 'word next' : 'word');
             }
+            await setMarkup(editor, '<div><b><i><u><span style="background-color:yellow">source</span></u></i></b> target</div>', 0, 6);
+            await page.keyboard.down('Shift');
+            await shortcut('KeyC');
+            await page.keyboard.up('Shift');
+            await setMarkup(editor, '<div>target</div>', 0, 6);
+            await page.keyboard.down('Shift');
+            await shortcut('KeyV');
+            await page.keyboard.up('Shift');
+            assert.equal(await text(editor), 'target');
+            assert.deepEqual(await page.$eval(editor, element => {
+                const node = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+                const style = getComputedStyle(node.parentElement);
+                return [
+                    Number(style.fontWeight) >= 600,
+                    style.fontStyle === 'italic',
+                    !!element.querySelector('u, [style*="underline"]'),
+                    !!element.querySelector('[style*="background-color"]')
+                ];
+            }), [true, true, true, true]);
             if (process.env.RENUMBER_ONLY) return;
             await setMarkup(editor, 'left<b>MID</b>right', 4, 7, true);
             await page.keyboard.press('Space');

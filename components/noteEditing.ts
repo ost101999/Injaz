@@ -302,6 +302,65 @@ export function updateNumberedNoteLine(editor: HTMLElement) {
     restoreSelection(editor, selection, original);
 }
 
+const formatClipboardKey = 'injaz_note_format_clipboard';
+const inlineFormatCommands = ['bold', 'italic', 'underline'] as const;
+type NoteFormat = Record<typeof inlineFormatCommands[number], boolean> & { highlight: string };
+
+function readNoteFormat(editor: HTMLElement, range: Range): NoteFormat {
+    const offset = textOffset(editor, range.startContainer, range.startOffset);
+    const [sample] = textPosition(editor, offset, range.collapsed);
+    const element = sample.parentElement;
+    const style = element && editor.contains(element) ? getComputedStyle(element) : getComputedStyle(editor);
+    const format: NoteFormat = {
+        bold: range.collapsed ? document.queryCommandState('bold') : Number(style.fontWeight) >= 600,
+        italic: range.collapsed ? document.queryCommandState('italic') : /^(italic|oblique)/.test(style.fontStyle),
+        underline: range.collapsed && document.queryCommandState('underline'),
+        highlight: 'transparent'
+    };
+    for (let node = element; node && node !== editor && editor.contains(node); node = node.parentElement) {
+        const appearance = getComputedStyle(node);
+        if (appearance.textDecorationLine.includes('underline')) format.underline = true;
+        if (format.highlight === 'transparent' && appearance.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+            format.highlight = appearance.backgroundColor;
+        }
+    }
+    return format;
+}
+
+export function handleNoteFormatShortcut(editor: HTMLElement, event: KeyboardEvent): boolean {
+    if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey || event.isComposing ||
+        (event.code !== 'KeyC' && event.code !== 'KeyV')) return false;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+
+    event.preventDefault();
+    if (event.code === 'KeyC') {
+        try {
+            localStorage.setItem(formatClipboardKey, JSON.stringify(readNoteFormat(editor, range)));
+        } catch {
+            return true;
+        }
+        return true;
+    }
+    let format: NoteFormat | null;
+    try {
+        format = JSON.parse(localStorage.getItem(formatClipboardKey) || 'null');
+    } catch {
+        return true;
+    }
+    if (!format || !inlineFormatCommands.every(command => typeof format[command] === 'boolean')) return true;
+    for (const command of inlineFormatCommands) {
+        if (document.queryCommandIndeterm(command)) document.execCommand(command);
+        if (document.queryCommandState(command) !== format[command]) document.execCommand(command);
+    }
+    if (CSS.supports('background-color', format.highlight)) {
+        document.execCommand('hiliteColor', false, format.highlight);
+    }
+    return true;
+}
+
 export function endNoteHighlight(editor: HTMLElement, event: KeyboardEvent): boolean {
     if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
         (event.key !== ' ' && event.key !== 'Enter')) return false;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useNoteFontSize } from './useNoteFontSize';
-import { endNoteHighlight, removeNumberedNoteMarker } from './noteEditing';
+import { endNoteHighlight, handleNoteFormatShortcut, removeNumberedNoteMarker } from './noteEditing';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -694,7 +694,8 @@ export const QuickAddWindow = () => {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (handleSizeShortcut(e)) return;
-        if (inputRef.current && removeNumberedNoteMarker(inputRef.current, e.nativeEvent)) {
+        if (inputRef.current && (handleNoteFormatShortcut(inputRef.current, e.nativeEvent) ||
+            removeNumberedNoteMarker(inputRef.current, e.nativeEvent))) {
             e.stopPropagation();
             return;
         }
