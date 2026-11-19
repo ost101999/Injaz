@@ -8,7 +8,7 @@
 .task-notes header { margin: 12px 16px 0; border-bottom: 1px solid #eae9f1; }
 .task-notes header input {
     width: 100%; padding: 9px 5px; border: 0; background: transparent;
-    font: 700 20px/1.45 Amiri, serif; color: inherit; text-align: center; text-overflow: ellipsis;
+    font: 700 22px/1.45 Amiri, serif; color: #775126; text-align: center; text-overflow: ellipsis;
 }
 .task-notes header input:focus { outline: none; background: #f6f4fa; text-overflow: clip; }
 .task-notes-editor {

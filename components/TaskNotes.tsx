@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { handleNoteEditing, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
+import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
 const highlight = '#fef08a';
@@ -42,6 +43,7 @@ export function TaskNotes({ title, initial, save, close }: {
     const titleEdited = useRef(false);
     const [failed, setFailed] = useState(false);
     const [closing, setClosing] = useState(false);
+    const { size, handleSizeShortcut } = useNoteFontSize();
     useLayoutEffect(() => {
         const node = editor.current!;
         node.innerHTML = safeNotes(initial);
@@ -123,7 +125,7 @@ export function TaskNotes({ title, initial, save, close }: {
                         }
                     }} />
             </header>
-            <div ref={editor} className="task-notes-editor" contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
+            <div ref={editor} className="task-notes-editor" style={{ fontSize: size }} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
                 onInput={event => {
                     const input = event.nativeEvent as InputEvent;
                     if (!input.isComposing && input.inputType !== 'historyUndo' && input.inputType !== 'historyRedo') {
@@ -140,6 +142,7 @@ export function TaskNotes({ title, initial, save, close }: {
                     format('insertText', event.clipboardData.getData('text/plain'));
                 }}
                 onKeyDown={event => {
+                    if (handleSizeShortcut(event)) return;
                     if (removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
                         event.stopPropagation();
                         return;
