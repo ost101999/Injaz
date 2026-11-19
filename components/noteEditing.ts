@@ -328,6 +328,10 @@ export function endNoteHighlight(editor: HTMLElement, event: KeyboardEvent): boo
 
     selection.collapseToEnd();
     event.preventDefault();
+    if (event.key === ' ' && !/[ \u00a0]$/.test(highlight.textContent || '')) {
+        document.execCommand('insertText', false, ' ');
+        return true;
+    }
     document.execCommand('insertHTML', false, event.key === ' '
         ? '<span style="background-color: transparent">&nbsp;</span>'
         : '<div><br></div>');

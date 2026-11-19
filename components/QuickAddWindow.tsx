@@ -1133,11 +1133,11 @@ export const QuickAddWindow = () => {
             }
         }
 
-        // ... (Highlight logic 328-396) ...
-        if (e.ctrlKey && e.shiftKey && (e.code === 'KeyS' || e.key.toLowerCase() === 's')) {
-            // ... existing highlight logic ...
-            e.preventDefault(); document.execCommand('styleWithCSS', false, true);
-            document.execCommand('hiliteColor', false, '#FFFF00'); // Simplified for brevity in this replace
+        if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && !e.nativeEvent.isComposing && e.code === 'KeyW') {
+            e.preventDefault();
+            e.stopPropagation();
+            document.execCommand('styleWithCSS', false, 'true');
+            document.execCommand('hiliteColor', false, '#FFFF00');
         }
 
         // Ctrl+1 → Arabic (RTL) | Ctrl+2 → English (LTR)
