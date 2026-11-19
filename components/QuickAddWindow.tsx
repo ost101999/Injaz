@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useNoteFontSize } from './useNoteFontSize';
-import { endNoteHighlight, handleNoteFormatShortcut, prepareNoteArrowSelection, removeNumberedNoteMarker, toggleNoteHighlight } from './noteEditing';
+import { endNoteHighlight, handleBlueBullet, handleNoteFormatShortcut, prepareNoteArrowSelection, removeNumberedNoteMarker, toggleNoteHighlight } from './noteEditing';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -701,6 +701,7 @@ export const QuickAddWindow = () => {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (inputRef.current) prepareNoteArrowSelection(inputRef.current, e.nativeEvent);
+        if (inputRef.current && handleBlueBullet(inputRef.current, e.nativeEvent)) return;
         if (handleSizeShortcut(e)) return;
         if (inputRef.current && (handleNoteFormatShortcut(inputRef.current, e.nativeEvent) ||
             removeNumberedNoteMarker(inputRef.current, e.nativeEvent))) {
@@ -1290,7 +1291,10 @@ export const QuickAddWindow = () => {
         // Ensure all content is wrapped in divs (fix first line issue)
         const children = Array.from(inputRef.current.childNodes);
         children.forEach((child) => {
-            if (child.nodeType === Node.TEXT_NODE && child.textContent && child.textContent.trim()) {
+            if (child.nodeType === Node.TEXT_NODE && child.textContent && child.textContent.trim() &&
+                !(child.previousSibling instanceof HTMLSpanElement &&
+                    (child.previousSibling.style.color === 'rgb(99, 102, 241)' ||
+                        child.previousSibling.querySelector('span[style*="99, 102, 241"], span[style*="#6366f1"]')))) {
                 // Wrap text nodes in div
                 const oldText = child.textContent;
                 const div = document.createElement('div');

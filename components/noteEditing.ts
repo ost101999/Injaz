@@ -23,14 +23,60 @@ function lineContext(editor: HTMLElement, node: Node, offset: number) {
     return { before, after, line };
 }
 
+const blueBulletHtml = '<span><span style="color: #6366f1">•</span>&nbsp;</span>';
+
+export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boolean {
+    if ((event.key !== ' ' && event.key !== 'Enter') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing) return false;
+    const selection = window.getSelection();
+    if (!selection?.isCollapsed || !selection.rangeCount || !selection.focusNode || !editor.contains(selection.focusNode)) return false;
+    const range = selection.getRangeAt(0);
+    const { before, after } = lineContext(editor, range.startContainer, range.startOffset);
+    const offset = textOffset(editor, range.startContainer, range.startOffset);
+    if (event.key === ' ' && /^[\t \u00a0]*-$/.test(before)) {
+        event.preventDefault();
+        range.setStart(...textPosition(editor, offset - 1, false));
+        document.execCommand('insertHTML', false, blueBulletHtml);
+        return true;
+    }
+    const marker = before.match(/^[\t \u00a0]*•[ \u00a0]/);
+    if (marker) {
+        if (event.key === ' ' && before !== marker[0]) return false;
+        const start = offset - before.length + marker[0].length - 2;
+        const position = textPosition(editor, start, false);
+        const parent = position[0].parentElement;
+        if (!parent || parent.style.color !== 'rgb(99, 102, 241)') return false;
+        event.preventDefault();
+        if (event.key === ' ') {
+            range.setStart(...position);
+            document.execCommand('insertHTML', false, '-&nbsp;');
+        } else if (!(before.slice(marker[0].length) + after).trim()) {
+            range.setStart(...position);
+            document.execCommand('delete');
+        } else {
+            document.execCommand('insertParagraph');
+            document.execCommand('insertHTML', false, blueBulletHtml);
+        }
+        return true;
+    }
+    return false;
+}
+
 export function prepareNoteArrowSelection(editor: HTMLElement, event: KeyboardEvent) {
-    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
+    if (!event.shiftKey || event.metaKey || event.altKey || event.isComposing ||
         (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
     const selection = window.getSelection();
     if (!selection?.focusNode || !editor.contains(selection.focusNode)) return;
     const { before, after } = lineContext(editor, selection.focusNode, selection.focusOffset);
-    const firstLetter = (before + after).match(/[A-Za-z\u0621-\u063a\u0641-\u064a\u066e-\u06d3]/)?.[0];
-    if (firstLetter) editor.style.direction = /[A-Za-z]/.test(firstLetter) ? 'ltr' : 'rtl';
+    const letters = (before + after).match(/\p{Letter}/gu);
+    if (!letters) return;
+    const rtlLetter = /[\p{Script=Arabic}\p{Script=Hebrew}]/u;
+    const rtl = rtlLetter.test(letters[0]);
+    // Let the browser handle visual ordering when a line mixes writing directions.
+    if (letters.some(letter => rtlLetter.test(letter) !== rtl)) return;
+    event.preventDefault();
+    const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+    selection.modify('extend', (event.key === 'ArrowRight') !== rtl ? 'forward' : 'backward', event.ctrlKey ? 'word' : 'character');
+    if (anchorNode && !editor.contains(selection.focusNode)) selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
 }
 
 function textOffset(editor: HTMLElement, node: Node, offset: number) {
