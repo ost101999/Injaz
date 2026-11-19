@@ -51,21 +51,23 @@ function moveCaretUp(editor: HTMLElement, event: React.KeyboardEvent, preferredX
 
     const current = caretRect(selection.getRangeAt(0));
     if (!current?.height) return null;
-    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
     const bounds = editor.getBoundingClientRect();
-    const top = bounds.top + editor.clientTop;
-    const left = bounds.left + editor.clientLeft;
+    // The app's zoom scales viewport coordinates, but scroll and client sizes use CSS pixels.
+    const scale = bounds.height / editor.offsetHeight;
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) * scale;
+    const top = bounds.top + editor.clientTop * scale;
+    const left = bounds.left + editor.clientLeft * scale;
     const x = preferredX ?? current.left;
     let y = current.top + current.height / 2 - lineHeight;
     const previousScroll = editor.scrollTop;
     if (y < top && previousScroll > 0) {
-        editor.scrollTop -= top - y + lineHeight / 2;
-        y += previousScroll - editor.scrollTop;
+        editor.scrollTop -= (top - y + lineHeight / 2) / scale;
+        y += (previousScroll - editor.scrollTop) * scale;
     }
 
     // Hit-test the actual preceding row so inline formatting cannot redirect the caret.
-    const target = y >= top && y < top + editor.clientHeight
-        ? document.caretRangeFromPoint(Math.min(Math.max(x, left + 1), left + editor.clientWidth - 1), y)
+    const target = y >= top && y < top + editor.clientHeight * scale
+        ? document.caretRangeFromPoint(Math.min(Math.max(x, left + 1), left + editor.clientWidth * scale - 1), y)
         : null;
     const destination = target && editor.contains(target.startContainer) ? caretRect(target) : null;
     if (!target || !destination?.height || Math.abs(destination.top + destination.height / 2 - y) >= lineHeight / 2) {
