@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useNoteFontSize } from './useNoteFontSize';
-import { removeNumberedNoteMarker } from './noteEditing';
+import { endNoteHighlight, removeNumberedNoteMarker } from './noteEditing';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -750,6 +750,11 @@ export const QuickAddWindow = () => {
         if ((e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
             !showListPopup && !showFolderPopup && !showParentTasksPopup) {
             setTimeout(checkAndUpdateContainerDir, 0);
+        }
+
+        if (inputRef.current && endNoteHighlight(inputRef.current, e.nativeEvent)) {
+            e.stopPropagation();
+            return;
         }
 
         // --- ENHANCED ENTER HANDLER ---
