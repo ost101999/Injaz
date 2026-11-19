@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit, GoogleTaskDeletion } from './types';
 import { Icons } from './components/Icons';
 import { DevModeButton } from './components/DevModeButton';
 import { GoogleMark } from './components/GoogleMark';
+import { TaskNotes } from './components/TaskNotes';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
@@ -11,6 +12,21 @@ import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
 import { detachGoogleTasksMovedOutside, flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
 
 // Simple ID generator
+function preserveTaskNotes(current: Task[], restored: Task[]) {
+    const notes = new Map<string, Task['notesHtml']>();
+    const collect = (tasks: Task[]) => tasks.forEach(task => {
+        notes.set(task.id, task.notesHtml);
+        collect(task.children || []);
+    });
+    collect(current);
+    const merge = (tasks: Task[]): Task[] => tasks.map(task => ({
+        ...task,
+        notesHtml: notes.has(task.id) ? notes.get(task.id) : task.notesHtml,
+        children: merge(task.children || [])
+    }));
+    return merge(restored);
+}
+
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 interface AppPreferences {
@@ -596,7 +612,7 @@ export default function App() {
                 if (entry.type === 'tasks') {
                     const current = tasksRef.current;
                     redoStackRef.current = [{ type: 'tasks', state: current }, ...redoStackRef.current];
-                    const restored = markGoogleChanges(current, entry.state, googleDefaultListRef.current);
+                    const restored = markGoogleChanges(current, preserveTaskNotes(current, entry.state), googleDefaultListRef.current);
                     tasksRef.current = restored;
                     flushSync(() => setTasksRef.current(restored));
                 } else if (entry.type === 'habits') {
@@ -620,7 +636,7 @@ export default function App() {
                 if (entry.type === 'tasks') {
                     const current = tasksRef.current;
                     undoStackRef.current = [...undoStackRef.current, { type: 'tasks', state: current }];
-                    const restored = markGoogleChanges(current, entry.state, googleDefaultListRef.current);
+                    const restored = markGoogleChanges(current, preserveTaskNotes(current, entry.state), googleDefaultListRef.current);
                     tasksRef.current = restored;
                     flushSync(() => setTasksRef.current(restored));
                 } else if (entry.type === 'habits') {
@@ -1147,6 +1163,104 @@ export default function App() {
             window.removeEventListener('resize', place);
         };
     }, [contextMenu, listContextMenu, activeSubmenu, moveTargetListId, preferences.zoom, lists, tasks]);
+
+    const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
+    const failedNote = useRef(false);
+    const notesTask = notesTaskId ? findTask(notesTaskId, tasks) : null;
+
+    const saveTaskNotes = (id: string, html: string, title?: string) => {
+        const update = (items: Task[]): Task[] => items.map(task => task.id === id
+            ? { ...task, notesHtml: html || undefined, title: title ?? task.title }
+            : task.children?.length ? { ...task, children: update(task.children) } : task);
+        const current = tasksRef.current;
+        const task = findTask(id, current);
+        if (!task) return false;
+        const renamed = title !== undefined && title !== task.title;
+        if ((task.notesHtml || '') === html && !renamed) {
+            failedNote.current = false;
+            return true;
+        }
+        const updated = update(current);
+        const next = renamed ? markGoogleChanges(current, updated, googleDefaultListRef.current) : updated;
+        try {
+            localStorage.setItem('injaz_tasks', JSON.stringify(next));
+        } catch {
+            failedNote.current = true;
+            return false;
+        }
+        if (renamed) {
+            undoStackRef.current = [...undoStackRef.current, { type: 'tasks', state: current }];
+            redoStackRef.current = [];
+        }
+        failedNote.current = false;
+        tasksRef.current = next;
+        setTasks(next);
+        return true;
+    };
+
+    const openTaskNotes = (id: string) => {
+        if (failedNote.current || findTask(id, tasksRef.current)?.type !== 'item') return;
+        setContextMenu(previous => ({ ...previous, isOpen: false }));
+        setActiveSubmenu(null);
+        setMoveTargetListId(null);
+        setNotesTaskId(id);
+    };
+
+    useEffect(() => {
+        let press: { pointerId: number; x: number; y: number; timer: number; opened: boolean } | null = null;
+        let suppressUntil = 0;
+        const cancel = () => {
+            if (press) clearTimeout(press.timer);
+            press = null;
+        };
+        const down = (event: PointerEvent) => {
+            cancel();
+            suppressUntil = 0;
+            if (!event.isPrimary || event.button !== 0 || event.ctrlKey || event.shiftKey || event.metaKey || event.altKey) return;
+            const target = event.target;
+            if (!(target instanceof Element) || target.closest('button, a, input, textarea, select, [contenteditable], [data-drag-handle]')) return;
+            const row = target.closest<HTMLElement>('[data-notes-task]');
+            if (!row?.dataset.notesTask) return;
+            const id = row.dataset.notesTask;
+            const timer = window.setTimeout(() => {
+                if (!press || !row.isConnected || failedNote.current) return;
+                press.opened = true;
+                openTaskNotes(id);
+            }, 500);
+            press = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer, opened: false };
+        };
+        const move = (event: PointerEvent) => {
+            if (press && !press.opened && press.pointerId === event.pointerId &&
+                Math.hypot(press.x - event.clientX, press.y - event.clientY) > 8) cancel();
+        };
+        const up = (event: PointerEvent) => {
+            if (press?.pointerId !== event.pointerId) return;
+            if (press.opened) suppressUntil = performance.now() + 500;
+            cancel();
+        };
+        const suppress = (event: MouseEvent) => {
+            if (!(press?.opened || performance.now() < suppressUntil)) return;
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        const cancelContext = (event: MouseEvent) => {
+            if (press && event.button !== 2) {
+                event.preventDefault();
+                event.stopPropagation();
+            } else cancel();
+        };
+        const listeners: [string, EventListener][] = [
+            ['pointerdown', down as EventListener], ['pointermove', move as EventListener],
+            ['pointerup', up as EventListener], ['pointercancel', cancel], ['scroll', cancel],
+            ['dragstart', cancel], ['blur', cancel], ['click', suppress as EventListener],
+            ['contextmenu', cancelContext as EventListener]
+        ];
+        listeners.forEach(([name, handler]) => window.addEventListener(name, handler, true));
+        return () => {
+            cancel();
+            listeners.forEach(([name, handler]) => window.removeEventListener(name, handler, true));
+        };
+    }, []);
 
     // --- MULTI-SELECTION STATE ---
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -3125,7 +3239,7 @@ export default function App() {
     // --- SELECTION BOX HANDLERS ---
     const handleSelectionMouseDown = (e: React.MouseEvent) => {
         // Ignore if clicking on a task or interactive element
-        if ((e.target as HTMLElement).closest('[data-task-card]') ||
+        if ((e.target as HTMLElement).closest('[data-task-card], [data-notes-task], [data-task-notes]') ||
             (e.target as HTMLElement).closest('button') ||
             (e.target as HTMLElement).closest('input') ||
             (e.target as HTMLElement).closest('textarea') ||
@@ -3435,6 +3549,7 @@ export default function App() {
                 <div
                     data-task-card
                     data-task-id={task.id}
+                    data-notes-task={task.id}
                     draggable={isDraggable}
                     onDragStart={(e) => isDraggable && handleDragStart(e, task.id)}
                     onDragOver={(e) => handleDragOver(e, task)}
@@ -5090,6 +5205,7 @@ export default function App() {
                                                                         handleStartInlineEdit(e, task);
                                                                     }
                                                                 }}
+                                                                data-notes-task={task.id}
                                                                 onDoubleClick={e => {
                                                                     e.stopPropagation();
                                                                     handleStartInlineEdit(e, task);
@@ -5258,6 +5374,7 @@ export default function App() {
                                                                                     {task.children.filter((c: Task) => !c.isCompleted).map((child: Task) => (
                                                                                         <div
                                                                                             key={child.id}
+                                                                                            data-notes-task={child.type === "item" ? child.id : undefined}
                                                                                             className={`flex items-start gap-2 py-1.5 min-w-0 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
                                                                                             onClick={e => handleStartInlineEdit(e, child)}
                                                                                             onContextMenu={e => {
@@ -5692,6 +5809,19 @@ export default function App() {
 
             {/* Bulk actions bar removed as requested */}
 
+            {notesTask && createPortal(
+                <TaskNotes
+                    title={new DOMParser().parseFromString(notesTask.title, 'text/html').body.textContent || notesTask.title}
+                    initial={notesTask.notesHtml || ''}
+                    save={(html, newTitle) => {
+                        const escaped = document.createElement('span');
+                        if (newTitle !== undefined) escaped.textContent = newTitle;
+                        return saveTaskNotes(notesTask.id, html, newTitle === undefined ? undefined : escaped.innerHTML);
+                    }}
+                    close={() => { if (!failedNote.current) setNotesTaskId(null); }} />,
+                document.body, notesTask.id
+            )}
+
             {/* Context menu (right-click) */}
             {
                 contextMenu.isOpen && (
@@ -5729,6 +5859,10 @@ export default function App() {
                             <div data-menu-panel className="bg-white rounded-xl shadow-2xl border border-gray-100 min-w-[140px] overflow-hidden context-panel-enter">
                                 <div className="px-3 py-2 text-[10px] text-red-400 font-bold border-b border-gray-50 uppercase tracking-wider">خيارات</div>
                                 <div className="p-1">
+                                    {contextMenuTask?.type === 'item' && contextMenu.source !== 'priority-dot' && (
+                                        <button type="button" className="w-full px-3 py-2 text-sm font-bold text-right rounded-lg hover:bg-indigo-50"
+                                            onClick={() => openTaskNotes(contextMenuTask.id)}>ملاحظات المهمة</button>
+                                    )}
                                     {/* Reorder Options (Generic for all, mostly used for Groups) - ONLY SHOW IF TRIGGERED BY BUTTON */}
                                     {contextMenu.taskId && contextMenu.source === 'trigger' && (() => {
                                         // Calculate position to enable/disable buttons
