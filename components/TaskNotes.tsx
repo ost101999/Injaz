@@ -12,7 +12,11 @@ function safeNotes(html: string) {
     const clean = document.createElement('div');
     function copy(node: Node, target: HTMLElement) {
         if (node.nodeType === Node.TEXT_NODE) {
-            target.append(document.createTextNode(node.textContent || ''));
+            // Chromium can skip bare newlines when moving the caret vertically.
+            (node.textContent || '').split('\n').forEach((line, index) => {
+                if (index > 0) target.append(document.createElement('br'));
+                if (line) target.append(document.createTextNode(line));
+            });
             return;
         }
         if (!(node instanceof HTMLElement) || ['SCRIPT', 'STYLE', 'IFRAME'].includes(node.tagName)) return;
@@ -33,6 +37,48 @@ function safeNotes(html: string) {
     return clean.innerHTML;
 }
 
+function caretRect(range: Range) {
+    const rect = range.getBoundingClientRect();
+    if (rect.height) return rect;
+    const next = range.startContainer.childNodes[range.startOffset];
+    return next instanceof HTMLBRElement ? next.getBoundingClientRect() : null;
+}
+
+function moveCaretUp(editor: HTMLElement, event: React.KeyboardEvent, preferredX: number | null) {
+    if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.nativeEvent.isComposing) return null;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !selection.isCollapsed || !editor.contains(selection.focusNode)) return null;
+
+    const current = caretRect(selection.getRangeAt(0));
+    if (!current?.height) return null;
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
+    const bounds = editor.getBoundingClientRect();
+    const top = bounds.top + editor.clientTop;
+    const left = bounds.left + editor.clientLeft;
+    const x = preferredX ?? current.left;
+    let y = current.top + current.height / 2 - lineHeight;
+    const previousScroll = editor.scrollTop;
+    if (y < top && previousScroll > 0) {
+        editor.scrollTop -= top - y + lineHeight / 2;
+        y += previousScroll - editor.scrollTop;
+    }
+
+    // Hit-test the actual preceding row so inline formatting cannot redirect the caret.
+    const target = y >= top && y < top + editor.clientHeight
+        ? document.caretRangeFromPoint(Math.min(Math.max(x, left + 1), left + editor.clientWidth - 1), y)
+        : null;
+    const destination = target && editor.contains(target.startContainer) ? caretRect(target) : null;
+    if (!target || !destination?.height || Math.abs(destination.top + destination.height / 2 - y) >= lineHeight / 2) {
+        if (editor.scrollTop !== previousScroll) editor.scrollTop = previousScroll;
+        return null;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    selection.collapse(target.startContainer, target.startOffset);
+    return x;
+}
+
 export function TaskNotes({ title, initial, save, close }: {
     title: string;
     initial: string;
@@ -40,6 +86,7 @@ export function TaskNotes({ title, initial, save, close }: {
     close: () => void;
 }) {
     const editor = useRef<HTMLDivElement>(null);
+    const caretColumn = useRef<number | null>(null);
     const panel = useRef<HTMLElement>(null);
     const titleInput = useRef<HTMLInputElement>(null);
     const titleEdited = useRef(false);
@@ -143,7 +190,13 @@ export function TaskNotes({ title, initial, save, close }: {
                     event.preventDefault();
                     format('insertText', event.clipboardData.getData('text/plain'));
                 }}
+                onPointerDown={() => { caretColumn.current = null; }}
+                onBlur={() => { caretColumn.current = null; }}
                 onKeyDown={event => {
+                    caretColumn.current = event.key === 'ArrowUp'
+                        ? moveCaretUp(event.currentTarget, event, caretColumn.current)
+                        : null;
+                    if (event.defaultPrevented) return;
                     if (handleSizeShortcut(event)) return;
                     if (handleNoteFormatShortcut(event.currentTarget, event.nativeEvent) ||
                         removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
