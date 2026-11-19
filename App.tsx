@@ -1239,9 +1239,20 @@ export default function App() {
             cancel();
         };
         const suppress = (event: MouseEvent) => {
-            if (!(press?.opened || performance.now() < suppressUntil)) return;
+            if (press?.opened || performance.now() < suppressUntil) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            if (event.button !== 0 || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+            const target = event.target;
+            if (!(target instanceof Element) || target.closest('button, a, input, textarea, select, [contenteditable], [data-drag-handle]')) return;
+            const row = target.closest<HTMLElement>('[data-notes-task]');
+            const id = row?.dataset.notesTask;
+            if (!id || failedNote.current || findTask(id, tasksRef.current)?.type !== 'item') return;
             event.preventDefault();
             event.stopPropagation();
+            openTaskNotes(id);
         };
         const cancelContext = (event: MouseEvent) => {
             if (press && event.button !== 2) {
