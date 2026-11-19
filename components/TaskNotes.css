@@ -17,6 +17,7 @@
 }
 .task-notes-editor, .task-notes-editor :is(div, p, li) { unicode-bidi: plaintext; text-align: start; }
 .task-notes-editor span[style*="opacity: 0.5"][style*="font-weight: bold"] { font-size: 0.85em; }
+.task-notes-editor [data-empty-rtl-number]::before { content: "\200f"; }
 .task-notes-editor ol { list-style: decimal; }
 .task-notes-editor ul { list-style: disc; }
 .task-notes-editor ol, .task-notes-editor ul { padding-inline-start: 1.5em; }
