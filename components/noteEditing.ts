@@ -190,6 +190,7 @@ export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): bo
         const marker = document.createElement('span');
         marker.style.fontWeight = 'bold';
         marker.style.opacity = '0.5';
+        marker.style.fontSize = '0.85em';
         marker.textContent = before;
         document.execCommand('insertHTML', false, `${marker.outerHTML}&nbsp;`);
         return true;
@@ -216,6 +217,7 @@ export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): bo
     const marker = document.createElement('span');
     marker.style.fontWeight = 'bold';
     marker.style.opacity = '0.5';
+    marker.style.fontSize = '0.85em';
     marker.textContent = (number || bullet)![1] + next;
     document.execCommand('insertHTML', false, `<br>${marker.outerHTML}&nbsp;`);
     return true;
