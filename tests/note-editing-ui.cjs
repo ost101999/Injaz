@@ -1,0 +1,183 @@
+const assert = require('node:assert/strict');
+const puppeteer = require(process.env.PUPPETEER_PATH || 'C:/My App/Quran Classes Tracker/node_modules/puppeteer');
+
+const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
+
+(async () => {
+    const browser = await puppeteer.launch({
+        executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+        headless: true
+    });
+    try {
+        const page = await browser.newPage();
+        const errors = [];
+        page.on('pageerror', error => {
+            errors.push(error.message);
+            console.error(error);
+        });
+        page.setDefaultTimeout(6000);
+        await page.setRequestInterception(true);
+        page.on('request', request => request.url().startsWith(origin + '/') ? request.continue() : request.abort());
+        await page.evaluateOnNewDocument(() => {
+            if (!localStorage.getItem('injaz_tasks')) {
+                localStorage.setItem('injaz_tasks', JSON.stringify([{
+                    id: 'fixture', title: 'Sample task', type: 'item', children: [], listId: 'default',
+                    isCompleted: false, parentId: null, priority: 2, createdAt: Date.now()
+                }]));
+            }
+        });
+
+        const openNotes = async () => {
+            const row = '[data-notes-task="fixture"]';
+            await page.waitForSelector(row);
+            await page.$eval(row, element => {
+                element.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, isPrimary: true, bubbles: true }));
+            });
+            await page.waitForSelector('[data-task-notes]');
+            await page.$eval(row, element => {
+                element.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, isPrimary: true, bubbles: true }));
+            });
+        };
+        const shortcut = async key => {
+            await page.keyboard.down('Control');
+            await page.keyboard.press(key);
+            await page.keyboard.up('Control');
+        };
+        const text = editor => page.$eval(editor, element => element.innerText.replace(/\u00a0/g, ' ').trimEnd());
+        const selection = () => page.evaluate(() => getSelection().toString());
+        const setMarkup = (editor, html, from, to = from, backward = false) => page.$eval(editor, (element, html, from, to, backward) => {
+            element.innerHTML = html;
+            element.focus();
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let start, end;
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                if (!start && from <= node.length) start = [node, from];
+                if (to <= node.length) { end = [node, to]; break; }
+                from -= node.length;
+                to -= node.length;
+            }
+            if (!start || !end) throw new Error('Invalid selection');
+            getSelection().setBaseAndExtent(...(backward ? end : start), ...(backward ? start : end));
+        }, html, from, to, backward);
+        const exerciseEditor = async editor => {
+            await setMarkup(editor, 'left<b>MID</b>right', 4, 7, true);
+            await page.keyboard.press('Space');
+            assert.equal(await text(editor), 'left MID right');
+            assert.equal(await selection(), 'MID');
+            assert.equal(await page.$eval(editor, element => element.querySelector('b').textContent.trim()), 'MID');
+            await page.keyboard.press('Space');
+            assert.equal(await text(editor), 'left MID right');
+            await shortcut('KeyZ');
+            assert.equal(await text(editor), 'leftMIDright');
+            assert.equal(await selection(), 'MID');
+            await shortcut('KeyY');
+            assert.equal(await text(editor), 'left MID right');
+            assert.equal(await selection(), 'MID');
+
+            await setMarkup(editor, '<div>left<b>MID</b>right</div>', 4, 7);
+            await page.keyboard.press('Enter');
+            assert.equal(await text(editor), 'left\nMID\nright');
+            assert.equal(await selection(), 'MID');
+            await page.keyboard.press('Enter');
+            assert.equal(await text(editor), 'left\nMID\nright');
+            await shortcut('KeyZ');
+            assert.equal(await text(editor), 'leftMIDright');
+            await shortcut('KeyY');
+            assert.equal(await text(editor), 'left\nMID\nright');
+
+            await setMarkup(editor, '<div>left<b>FIRST</b></div><div><i>SECOND</i>right</div>', 4, 15);
+            await page.keyboard.press('Enter');
+            assert.equal(await text(editor), 'left\nFIRST\nSECOND\nright', await page.$eval(editor, element => element.innerHTML));
+            assert.equal((await selection()).replace(/\n+/g, ' '), 'FIRST SECOND');
+            await shortcut('KeyZ');
+            assert.equal(await text(editor), 'leftFIRST\nSECONDright');
+            assert.equal((await selection()).replace(/\n+/g, ' '), 'FIRST SECOND');
+            await shortcut('KeyY');
+            assert.equal(await text(editor), 'left\nFIRST\nSECOND\nright');
+            assert.equal((await selection()).replace(/\n+/g, ' '), 'FIRST SECOND');
+
+            await setMarkup(editor, '<div>left <b>MID</b> right</div>', 5, 8);
+            await page.keyboard.press('Space');
+            assert.equal(await text(editor), 'left MID right');
+            assert.equal(await selection(), 'MID');
+
+            for (const separator of ['.', '-']) {
+                const line = `١${separator} test`;
+                await setMarkup(editor, line, line.length);
+                await page.keyboard.press('Enter');
+                assert.equal(await text(editor), `${line}\n٢${separator}`);
+                await page.keyboard.type('next');
+                await page.keyboard.press('Enter');
+                assert.equal(await text(editor), `${line}\n٢${separator} next\n٣${separator}`);
+                await page.keyboard.press('Enter');
+                assert.equal(await text(editor), `${line}\n٢${separator} next`);
+            }
+
+            await setMarkup(editor, 'word', 0, 4);
+            await shortcut('KeyB');
+            assert.ok(await page.$eval(editor, element => element.querySelector('b, [style*="font-weight"]')));
+
+            await setMarkup(editor, 'highlight', 0, 9);
+            await page.keyboard.down('Control');
+            await page.keyboard.down('Shift');
+            await page.keyboard.press('KeyW');
+            await page.keyboard.up('Shift');
+            await page.keyboard.up('Control');
+            assert.ok(await page.$eval(editor, element => element.querySelector('[style*="background-color"]')));
+        };
+
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        await openNotes();
+        const notes = '.task-notes-editor';
+        assert.equal(await page.$('[data-task-notes] [role="toolbar"]'), null);
+        assert.match(await page.$eval(notes, element => getComputedStyle(element).fontFamily), /Amiri/);
+        await exerciseEditor(notes);
+        // Measure rendered glyphs on a BR-separated mixed-direction line pair.
+        const mixed = '١٢ ! عربي English<br>١٢ ! English عربي';
+        await setMarkup(notes, mixed, 14);
+        const alignment = () => page.$eval(notes, element => {
+            const range = document.createRange();
+            const right = element.getBoundingClientRect().right;
+            const left = element.getBoundingClientRect().left;
+            return [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => {
+                range.selectNodeContents(node);
+                const rect = range.getBoundingClientRect();
+                return right - rect.right < rect.left - left ? 'right' : 'left';
+            });
+        });
+        await page.waitForFunction(() => !document.getAnimations().some(animation => animation.playState === 'running'));
+        assert.deepEqual(await alignment(), ['right', 'left']);
+        const title = '[data-task-notes] input';
+        await page.focus(title);
+        await shortcut('KeyA');
+        await page.keyboard.type('Renamed task');
+        assert.ok(await page.$('[data-task-notes]:not([data-closing])'));
+        await page.mouse.click(5, 5);
+        assert.ok(await page.$('[data-task-notes][data-closing]'));
+        await page.waitForSelector('[data-task-notes]', { hidden: true });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await openNotes();
+        assert.equal(await page.$eval(title, element => element.value), 'Renamed task');
+        assert.deepEqual(await alignment(), ['right', 'left']);
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('[data-task-notes]', { hidden: true });
+
+        await page.goto(origin + '/#quick-add', { waitUntil: 'domcontentloaded' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        const quick = '[contenteditable="true"]';
+        await page.waitForSelector(quick);
+        assert.match(await page.$eval(quick, element => getComputedStyle(element).fontFamily), /Amiri/);
+        await exerciseEditor(quick);
+        await setMarkup(quick, 'https://example.test', 20);
+        await page.keyboard.press('Enter');
+        assert.equal(await page.$eval(quick + ' a', link => link.origin), 'https://example.test');
+        assert.deepEqual(errors, []);
+        console.log('Notes editing checks passed in both editors.');
+    } finally {
+        await browser.close();
+    }
+})().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+});

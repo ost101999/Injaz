@@ -28,6 +28,7 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
+  notesHtml?: string;
   type: 'folder' | 'item';
   color: string; // Hex code
   priority: Priority;
