@@ -139,6 +139,15 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
         const notes = '.task-notes-editor';
         assert.equal(await page.$('[data-task-notes] [role="toolbar"]'), null);
         assert.match(await page.$eval(notes, element => getComputedStyle(element).fontFamily), /Amiri/);
+        await setMarkup(notes, '1-', 2);
+        await page.keyboard.press('Space');
+        await page.keyboard.sendCharacter('عربي');
+        assert.equal(await text(notes), '١- عربي');
+        await page.keyboard.press('Enter');
+        assert.equal(await text(notes), '١- عربي\n٢-', await page.$eval(notes, e => e.innerHTML));
+        await page.keyboard.sendCharacter('نص');
+        await page.keyboard.press('Enter');
+        assert.equal(await text(notes), '١- عربي\n٢- نص\n٣-');
         await exerciseEditor(notes);
         // Measure rendered glyphs on a BR-separated mixed-direction line pair.
         const mixed = '١٢ ! عربي English<br>١٢ ! English عربي';
