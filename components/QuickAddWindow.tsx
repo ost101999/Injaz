@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useNoteFontSize } from './useNoteFontSize';
-import { endNoteHighlight, handleNoteFormatShortcut, removeNumberedNoteMarker } from './noteEditing';
+import { endNoteHighlight, handleNoteFormatShortcut, removeNumberedNoteMarker, toggleNoteHighlight } from './noteEditing';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -1137,8 +1137,7 @@ export const QuickAddWindow = () => {
         if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && !e.nativeEvent.isComposing && e.code === 'KeyW') {
             e.preventDefault();
             e.stopPropagation();
-            document.execCommand('styleWithCSS', false, 'true');
-            document.execCommand('hiliteColor', false, '#FFFF00');
+            toggleNoteHighlight(e.currentTarget, '#FFFF00');
         }
 
         // Ctrl+1 → Arabic (RTL) | Ctrl+2 → English (LTR)

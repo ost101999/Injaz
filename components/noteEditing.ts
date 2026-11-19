@@ -327,6 +327,28 @@ function readNoteFormat(editor: HTMLElement, range: Range): NoteFormat {
     return format;
 }
 
+export function toggleNoteHighlight(editor: HTMLElement, color: string) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !editor.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+    const range = selection.getRangeAt(0);
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    let hasText = false;
+    let allHighlighted = true;
+    while ((node = walker.nextNode())) {
+        if (!node.textContent || !range.intersectsNode(node)) continue;
+        const sample = document.createRange();
+        sample.selectNodeContents(node);
+        if (range.compareBoundaryPoints(Range.END_TO_START, sample) >= 0 ||
+            range.compareBoundaryPoints(Range.START_TO_END, sample) <= 0) continue;
+        hasText = true;
+        if (readNoteFormat(editor, sample).highlight === 'transparent') allHighlighted = false;
+    }
+    const highlighted = range.collapsed ? readNoteFormat(editor, range).highlight !== 'transparent' : hasText && allHighlighted;
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('hiliteColor', false, highlighted ? 'transparent' : color);
+}
+
 export function handleNoteFormatShortcut(editor: HTMLElement, event: KeyboardEvent): boolean {
     if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey || event.isComposing ||
         (event.code !== 'KeyC' && event.code !== 'KeyV')) return false;
