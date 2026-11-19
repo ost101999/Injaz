@@ -103,6 +103,13 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
             assert.equal(await selection(), 'MID');
 
             for (const separator of ['.', '-']) {
+                await setMarkup(editor, `1${separator}`, 2);
+                await page.keyboard.press('Space');
+                assert.equal(await page.$eval(editor, element => element.querySelector('span')?.style.opacity), '0.5');
+                await page.keyboard.type('test');
+                assert.equal(await text(editor), `1${separator} test`);
+                await page.keyboard.press('Enter');
+                assert.equal(await text(editor), `1${separator} test\n2${separator}`);
                 const line = `١${separator} test`;
                 await setMarkup(editor, line, line.length);
                 await page.keyboard.press('Enter');

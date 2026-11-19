@@ -19,6 +19,7 @@ function safeNotes(html: string) {
         if (element !== target) {
             if (node.style.backgroundColor) element.style.backgroundColor = node.style.backgroundColor;
             if (node.style.fontWeight) element.style.fontWeight = node.style.fontWeight;
+            if (node.style.opacity === '0.5') element.style.opacity = '0.5';
             target.append(element);
         }
         node.childNodes.forEach(child => copy(child, element));
