@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { endNoteHighlight, handleNoteEditing, handleNoteFormatShortcut, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
+import { endNoteHighlight, handleNoteEditing, handleNoteFormatShortcut, removeNumberedNoteMarker, repairSavedNumbering, toggleNoteHighlight, updateNumberedNoteLine } from './noteEditing';
 import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
@@ -214,7 +214,10 @@ export function TaskNotes({ title, initial, save, close }: {
                         if (command) {
                             event.preventDefault();
                             event.stopPropagation();
-                            format(command, command === 'hiliteColor' ? highlight : undefined);
+                            if (command === 'hiliteColor') {
+                                toggleNoteHighlight(event.currentTarget, highlight);
+                                persist();
+                            } else format(command);
                             return;
                         }
                     }
