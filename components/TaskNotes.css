@@ -1,6 +1,7 @@
 .task-notes {
     position: fixed; inset: 0 0 0 auto; z-index: 1150;
     width: max(35%, min(320px, 100%)); display: flex; flex-direction: column;
+    overflow: hidden; overscroll-behavior: contain;
     background: #fff9e9; color: #25283b; border-left: 1px solid #e5e5ef;
     box-shadow: -12px 0 36px #25283b23;
     font-family: Amiri, serif;
@@ -12,7 +13,7 @@
 }
 .task-notes header input:focus { outline: none; background: #f6f4fa; text-overflow: clip; }
 .task-notes-editor {
-    flex: 1; min-height: 0; overflow: auto; padding: 8px 16px; outline: none;
+    flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px; outline: none;
     font-size: 20px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap;
 }
 .task-notes-editor, .task-notes-editor :is(div, p, li) { unicode-bidi: plaintext; text-align: start; }
