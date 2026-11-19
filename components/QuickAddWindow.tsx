@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
+import { useNoteFontSize } from './useNoteFontSize';
 import { removeNumberedNoteMarker } from './noteEditing';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
@@ -21,6 +22,7 @@ interface Folder {
 }
 
 export const QuickAddWindow = () => {
+    const { size, handleSizeShortcut } = useNoteFontSize();
     const inputRef = useRef<HTMLDivElement>(null);
 
     // Popup state
@@ -691,6 +693,7 @@ export const QuickAddWindow = () => {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (handleSizeShortcut(e)) return;
         if (inputRef.current && removeNumberedNoteMarker(inputRef.current, e.nativeEvent)) {
             e.stopPropagation();
             return;
@@ -1646,7 +1649,7 @@ export const QuickAddWindow = () => {
                             onCut={handleCut}
                             onClick={handleContentClick}
                             className="w-full h-full bg-transparent text-xl font-medium focus:outline-none resize-none leading-relaxed overflow-auto whitespace-pre-wrap outline-none pr-4 pl-4 custom-scrollbar"
-                            style={{ fontFamily: 'Amiri', caretColor: '#333', direction: containerDir, textAlign: containerDir === 'rtl' ? 'right' : 'left' }}
+                            style={{ fontFamily: 'Amiri', fontSize: size, caretColor: '#333', direction: containerDir, textAlign: containerDir === 'rtl' ? 'right' : 'left' }}
                             dir={containerDir}
                             placeholder="اكتب ملاحظة" />
                     </div>
