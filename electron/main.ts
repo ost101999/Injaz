@@ -21,8 +21,12 @@ if (sharedPreview) {
 }
 
 let mainWindow: BrowserWindow | null = null;
-const quickAddWindows = new Set<BrowserWindow>();
-let primaryQuickAddWindow: BrowserWindow | null = null; // Single persistent window for toggle
+let quickNote: {
+    window: BrowserWindow;
+    ready: boolean;
+    openRequested: boolean;
+    hasOpened: boolean;
+} | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let updateCheckInProgress = false;
@@ -417,10 +421,7 @@ function createMainWindow() {
 }
 
 function createQuickAddWindow() {
-    // Avoid creating multiple windows if primary is already being initialized or exists
-    if (primaryQuickAddWindow && !primaryQuickAddWindow.isDestroyed()) {
-        return primaryQuickAddWindow;
-    }
+    if (quickNote && !quickNote.window.isDestroyed()) return quickNote;
 
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
     const windowWidth = 500;
@@ -450,26 +451,25 @@ function createQuickAddWindow() {
     });
     registerWindowQuitShortcut(win);
 
-    if (devModeUrl) {
-        win.loadURL(`${devModeUrl}#quick-add`);
-    } else if (isDev && !sharedPreview) {
-        win.loadURL('http://localhost:4000/#/quick-add');
-    } else {
-        win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'quick-add' });
-    }
+    const note = { window: win, ready: false, openRequested: false, hasOpened: false };
+    quickNote = note;
 
-    win.once('ready-to-show', () => {
-        // Initial state: Opacity 1 (electron window visible), 
-        // but Renderer content will be Opacity 0 until 'show-quick-note' is sent.
-        win.setOpacity(1);
-        win.setAlwaysOnTop(true, 'screen-saver'); // Always on top whenever shown
-        win.show();
-        win.setIgnoreMouseEvents(false);
-        win.focus();
+    win.webContents.on('did-start-navigation', event => {
+        if (event.isMainFrame && !event.isSameDocument) note.ready = false;
+    });
+    win.webContents.on('render-process-gone', () => {
+        if (!win.isDestroyed()) win.destroy();
+    });
 
-        // Signal renderer to show content (fade in)
-        win.webContents.send('show-quick-note');
-        win.webContents.send('focus-quick-add');
+    const loading = devModeUrl
+        ? win.loadURL(devModeUrl + '#quick-add')
+        : isDev && !sharedPreview
+            ? win.loadURL('http://localhost:4000/#quick-add')
+            : win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'quick-add' });
+    void loading.catch(error => {
+        if (win.isDestroyed() || error?.code === 'ERR_ABORTED') return;
+        console.error('Failed to load Quick Note:', error);
+        win.destroy();
     });
 
     win.on('close', (event) => {
@@ -503,13 +503,24 @@ function createQuickAddWindow() {
     });
 
     win.on('closed', () => {
-        if (primaryQuickAddWindow === win) primaryQuickAddWindow = null;
-        quickAddWindows.delete(win);
+        if (quickNote === note) quickNote = null;
     });
 
-    primaryQuickAddWindow = win;
-    quickAddWindows.add(win);
-    return win;
+    return note;
+}
+
+function showQuickNote(win: BrowserWindow, focus: boolean) {
+    win.setIgnoreMouseEvents(false);
+    win.setAlwaysOnTop(true, 'screen-saver');
+    if (focus) {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+    } else {
+        win.showInactive();
+    }
+    win.webContents.send('show-quick-note');
+    if (focus) win.webContents.send('focus-quick-add');
 }
 
 function createTray() {
@@ -568,7 +579,9 @@ if (!gotTheLock) {
                 }, 500);
             });
         }
-        // Quick Note window is created on demand (not at startup)
+        mainWindow?.webContents.once('dom-ready', () => {
+            if (!isQuitting) createQuickAddWindow();
+        });
         createTray();
 
         // The renderer requests the initial check after installing its listeners.
@@ -715,7 +728,7 @@ if (!gotTheLock) {
             // Read the latest saved state after the server is ready, not before startup.
             storage = await window.webContents.executeJavaScript(`Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; }))`);
             // Recreate quick-note windows after switching to the new storage origin.
-            for (const quick of quickAddWindows) if (!quick.isDestroyed()) quick.destroy();
+            quickNote?.window.destroy();
             devStorage = storage;
             if (!oldUrl) fs.writeFileSync(devRecoveryFile, JSON.stringify(storage));
             devModeUrl = oldUrl ? null : target;
@@ -724,10 +737,14 @@ if (!gotTheLock) {
             setImmediate(async () => {
                 try { await window.loadURL(target); if (oldUrl) { oldChild?.kill(); devModeChild = null; } }
                 catch {
+                    quickNote?.window.destroy();
                     newChild?.kill(); devModeChild = oldChild; devModeUrl = oldUrl; devStorage = storage;
                     try { await window.loadURL(oldUrl || installedUrl); } catch {}
                     dialog.showErrorBox('وضع التطوير', 'تعذر تحميل الواجهة.');
-                } finally { devModeBusy = false; }
+                } finally {
+                    devModeBusy = false;
+                    if (!isQuitting) createQuickAddWindow();
+                }
             });
             return { ok: true };
         } catch (error: any) { newChild?.kill(); return { ok: false, error: String(error.message || error) }; }
@@ -1234,39 +1251,25 @@ if (!gotTheLock) {
 
         try {
             const ret = globalShortcut.register(shortcut, () => {
-                if (!primaryQuickAddWindow || primaryQuickAddWindow.isDestroyed()) {
-                    primaryQuickAddWindow = createQuickAddWindow();
-                    primaryQuickAddWindow.once('ready-to-show', () => {
-                        primaryQuickAddWindow!.setOpacity(1);
-                        primaryQuickAddWindow!.setAlwaysOnTop(true, 'screen-saver');
-                        primaryQuickAddWindow!.show();
-                        primaryQuickAddWindow!.webContents.send('show-quick-note');
-                    });
-                } else {
-                    if (primaryQuickAddWindow.isVisible()) {
-                        // Window is visible AND focused → hide it (toggle off)
-                        primaryQuickAddWindow.webContents.send('hide-quick-note');
-
-                        // Safety fallback in case the renderer animation never completes
-                        const safetyTimer = setTimeout(() => {
-                            if (primaryQuickAddWindow && !primaryQuickAddWindow.isDestroyed() && primaryQuickAddWindow.isVisible()) {
-                                primaryQuickAddWindow.hide();
-                                primaryQuickAddWindow.setIgnoreMouseEvents(false);
-                            }
-                        }, 1500);
-                        primaryQuickAddWindow.once('hide', () => clearTimeout(safetyTimer));
-                    } else {
-                        // Window is hidden OR visible but behind other apps → bring to front
-                        primaryQuickAddWindow.setIgnoreMouseEvents(false); // Ensure clickable
-                        primaryQuickAddWindow.setOpacity(1);
-                        primaryQuickAddWindow.setAlwaysOnTop(true, 'screen-saver'); // Force to front
-                        primaryQuickAddWindow.show();
-                        primaryQuickAddWindow.restore();
-                        primaryQuickAddWindow.focus();
-                        primaryQuickAddWindow.webContents.send('show-quick-note');
-                        primaryQuickAddWindow.webContents.send('focus-quick-add');
-                    }
+                const note = createQuickAddWindow();
+                const win = note.window;
+                if (!note.ready) {
+                    note.openRequested = true;
+                    return;
                 }
+                if (!win.isVisible() || win.isMinimized()) {
+                    note.hasOpened = true;
+                    showQuickNote(win, true);
+                    return;
+                }
+                win.webContents.send('hide-quick-note');
+                const safetyTimer = setTimeout(() => {
+                    if (!win.isDestroyed() && win.isVisible()) {
+                        win.hide();
+                        win.setIgnoreMouseEvents(false);
+                    }
+                }, 1500);
+                win.once('hide', () => clearTimeout(safetyTimer));
             });
             if (!ret) console.log('Registration failed for', shortcut);
             else currentGlobalShortcut = shortcut;
@@ -1284,24 +1287,14 @@ if (!gotTheLock) {
 
         try {
             const ret = globalShortcut.register(shortcut, () => {
-                // Toggle: if any visible, hide all. If all hidden, show all.
-                let hasVisible = false;
-                for (const win of quickAddWindows) {
-                    if (!win.isDestroyed() && win.isVisible()) {
-                        hasVisible = true;
-                        break;
-                    }
-                }
+                const note = quickNote;
+                if (!note?.ready || !note.hasOpened || note.window.isDestroyed()) return;
 
-                quickAddWindows.forEach(win => {
-                    if (!win.isDestroyed()) {
-                        if (hasVisible) {
-                            win.hide();
-                        } else {
-                            win.showInactive(); // Show without focus to prevent flash
-                        }
-                    }
-                });
+                if (note.window.isVisible()) {
+                    note.window.hide();
+                } else {
+                    showQuickNote(note.window, false);
+                }
             });
             if (!ret) console.log('Hide Notes Registration failed for', shortcut);
             else currentHideNotesShortcut = shortcut;
@@ -1370,7 +1363,24 @@ if (!gotTheLock) {
     });
 
     // Handle fetching parent tasks (tasks with subtasks) for a folder
-    // Single module-level handler: hide the window that sent the signal
+    ipcMain.on('quick-note-ready', event => {
+        const note = quickNote;
+        if (!note || note.window.webContents !== event.sender || note.ready) return;
+
+        note.ready = true;
+        if (note.openRequested) {
+            note.openRequested = false;
+            note.hasOpened = true;
+            showQuickNote(note.window, true);
+        } else if (note.window.isVisible()) {
+            showQuickNote(note.window, note.window.isFocused());
+        }
+    });
+
+    ipcMain.on('quick-note-load-failed', event => {
+        if (quickNote?.window.webContents === event.sender) quickNote.window.destroy();
+    });
+
     ipcMain.on('quick-note-hidden', (event) => {
         try {
             const win = BrowserWindow.fromWebContents(event.sender);
