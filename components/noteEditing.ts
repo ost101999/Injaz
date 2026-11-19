@@ -142,6 +142,84 @@ function nextNumber(digits: string) {
     return String(BigInt(decimal) + 1n).replace(/\d/g, digit => String.fromCharCode(alphabet + Number(digit)));
 }
 
+type NoteLine = { text: string; nodes: Text[] };
+
+function noteLines(root: HTMLElement): NoteLine[] {
+    const lines: NoteLine[] = [{ text: '', nodes: [] }];
+    const newline = () => {
+        if (lines[lines.length - 1].text || lines[lines.length - 1].nodes.length) lines.push({ text: '', nodes: [] });
+    };
+    function visit(node: Node) {
+        if (node instanceof Text) {
+            const line = lines[lines.length - 1];
+            line.text += node.data;
+            line.nodes.push(node);
+        } else if (node instanceof HTMLBRElement) {
+            newline();
+        } else if (node instanceof HTMLElement) {
+            const block = node !== root && node.matches('div, p, li');
+            if (block) newline();
+            node.childNodes.forEach(visit);
+            if (block) newline();
+        }
+    }
+    visit(root);
+    return lines;
+}
+
+export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEvent): boolean {
+    if (!['Backspace', 'Delete'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return false;
+    const range = selection.getRangeAt(0);
+    const lines = noteLines(editor);
+    const index = lines.findIndex(line => line.nodes.some(node => node === range.startContainer || node.parentElement?.contains(range.startContainer)));
+    if (index < 0) return false;
+    const line = lines[index];
+    const marker = line.text.match(numberPrefix);
+    if (!marker) return false;
+    const start = textOffset(editor, range.startContainer, range.startOffset);
+    const end = textOffset(editor, range.endContainer, range.endOffset);
+    const lineStart = textOffset(editor, line.nodes[0], 0);
+    const digitStart = lineStart + marker[1].length;
+    const digitEnd = digitStart + marker[2].length;
+    const deletedStart = selection.isCollapsed ? start - (event.key === 'Backspace' ? 1 : 0) : start;
+    const deletedEnd = selection.isCollapsed ? end + (event.key === 'Delete' ? 1 : 0) : end;
+    if (deletedStart > digitStart || deletedEnd < digitEnd || deletedStart < lineStart || deletedEnd > lineStart + marker[0].length) return false;
+
+    const clone = editor.cloneNode(true) as HTMLElement;
+    const copyLines = noteLines(clone);
+    const remove = document.createRange();
+    remove.setStart(copyLines[index].nodes[0], marker[1].length);
+    let remaining = marker[0].length - marker[1].length;
+    for (const node of copyLines[index].nodes) {
+        const skip = node === copyLines[index].nodes[0] ? marker[1].length : 0;
+        const count = Math.min(remaining, node.length - skip);
+        remaining -= count;
+        if (!remaining) { remove.setEnd(node, skip + count); break; }
+    }
+    remove.deleteContents();
+    let expected = marker[2];
+    for (const next of copyLines.slice(index + 1)) {
+        const match = next.text.match(numberPrefix);
+        if (!match || match[3] !== marker[3]) break;
+        const node = next.nodes.find(n => /[0-9٠-٩۰-۹]/.test(n.data));
+        if (!node) break;
+        const digits = node.data.match(/[0-9٠-٩۰-۹]+/);
+        if (!digits) break;
+        const decimal = expected.replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) & 15));
+        const base = /^[٠-٩]/.test(match[2]) ? 0x660 : /^[۰-۹]/.test(match[2]) ? 0x6f0 : 0x30;
+        const replacement = decimal.replace(/\d/g, digit => String.fromCharCode(base + Number(digit)));
+        node.replaceData(digits.index!, digits[0].length, replacement);
+        expected = nextNumber(expected);
+    }
+    event.preventDefault();
+    selection.selectAllChildren(editor);
+    document.execCommand('insertHTML', false, clone.innerHTML);
+    selection.collapse(...textPosition(editor, digitStart, true));
+    return true;
+}
+
 export function updateNumberedNoteLine(editor: HTMLElement) {
     const selection = window.getSelection();
     if (!selection?.rangeCount || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return;
