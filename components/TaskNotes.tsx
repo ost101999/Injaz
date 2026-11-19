@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { handleNoteEditing } from './noteEditing';
+import { handleNoteEditing, updateNumberedNoteLine } from './noteEditing';
 import './TaskNotes.css';
 
 const highlight = '#fef08a';
@@ -121,7 +121,17 @@ export function TaskNotes({ title, initial, save, close }: {
                     }} />
             </header>
             <div ref={editor} className="task-notes-editor" contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
-                onInput={persist}
+                onInput={event => {
+                    const input = event.nativeEvent as InputEvent;
+                    if (!input.isComposing && input.inputType !== 'historyUndo' && input.inputType !== 'historyRedo') {
+                        updateNumberedNoteLine(event.currentTarget);
+                    }
+                    persist();
+                }}
+                onCompositionEnd={event => {
+                    updateNumberedNoteLine(event.currentTarget);
+                    persist();
+                }}
                 onPaste={event => {
                     event.preventDefault();
                     format('insertText', event.clipboardData.getData('text/plain'));

@@ -53,6 +53,10 @@ type SelectionEdit = { before: string; after: string; original: TextSelection; r
 const selectionEdits = new WeakMap<HTMLElement, SelectionEdit[]>();
 
 function restoreSelection(editor: HTMLElement, selection: Selection, { start, length, backward }: TextSelection) {
+    if (!length) {
+        selection.collapse(...textPosition(editor, start, true));
+        return;
+    }
     const first = textPosition(editor, start, false);
     const last = textPosition(editor, start + length, true);
     selection.setBaseAndExtent(...(backward ? last : first), ...(backward ? first : last));
@@ -136,6 +140,29 @@ function nextNumber(digits: string) {
     const alphabet = /^\d/.test(digits) ? 0x30 : /^[\u0660-\u0669]/.test(digits) ? 0x660 : 0x6f0;
     const decimal = digits.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) & 0xf));
     return String(BigInt(decimal) + 1n).replace(/\d/g, digit => String.fromCharCode(alphabet + Number(digit)));
+}
+
+export function updateNumberedNoteLine(editor: HTMLElement) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return;
+    const range = selection.getRangeAt(0);
+    const { before, after } = lineContext(editor, range.startContainer, range.startOffset);
+    const text = before + after;
+    const match = text.match(numberPrefix);
+    const letter = text.slice(match?.[0].length || 0).match(/\p{Letter}/u)?.[0];
+    if (!match || !letter || !/[\p{Script=Arabic}]/u.test(letter) || !/[0-9]/.test(match[2])) return;
+
+    const lineStart = textOffset(editor, range.startContainer, range.startOffset) - before.length;
+    const [node, offset] = textPosition(editor, lineStart + match[1].length, false);
+    if (!(node instanceof Text) || !node.parentElement?.matches('span[style*="opacity"]')) return;
+    const original = {
+        start: textOffset(editor, range.startContainer, range.startOffset),
+        length: range.toString().length,
+        backward: selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
+    };
+    const digits = match[2].replace(/[0-9]/g, digit => String.fromCharCode(0x660 + Number(digit)));
+    node.replaceData(offset, match[2].length, digits);
+    restoreSelection(editor, selection, original);
 }
 
 export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): boolean {
