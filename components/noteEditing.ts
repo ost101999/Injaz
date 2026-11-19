@@ -150,7 +150,9 @@ export function updateNumberedNoteLine(editor: HTMLElement) {
     const text = before + after;
     const match = text.match(numberPrefix);
     const letter = text.slice(match?.[0].length || 0).match(/\p{Letter}/u)?.[0];
-    if (!match || !letter || !/[\p{Script=Arabic}]/u.test(letter) || !/[0-9]/.test(match[2])) return;
+    if (!match || !letter) return;
+    const arabic = /\p{Script=Arabic}/u.test(letter);
+    if (arabic ? !/[0-9]/.test(match[2]) : !/[\u0660-\u0669\u06f0-\u06f9]/.test(match[2])) return;
 
     const lineStart = textOffset(editor, range.startContainer, range.startOffset) - before.length;
     const [node, offset] = textPosition(editor, lineStart + match[1].length, false);
@@ -160,7 +162,9 @@ export function updateNumberedNoteLine(editor: HTMLElement) {
         length: range.toString().length,
         backward: selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
     };
-    const digits = match[2].replace(/[0-9]/g, digit => String.fromCharCode(0x660 + Number(digit)));
+    const digits = arabic
+        ? match[2].replace(/[0-9]/g, digit => String.fromCharCode(0x660 + Number(digit)))
+        : match[2].replace(/[\u0660-\u0669\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) & 0xf));
     node.replaceData(offset, match[2].length, digits);
     restoreSelection(editor, selection, original);
 }
