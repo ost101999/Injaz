@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { handleNoteEditing, removeNumberedNoteMarker, updateNumberedNoteLine } from './noteEditing';
+import { handleNoteEditing, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
 import './TaskNotes.css';
 
 const highlight = '#fef08a';
@@ -44,6 +44,7 @@ export function TaskNotes({ title, initial, save, close }: {
     useLayoutEffect(() => {
         const node = editor.current!;
         node.innerHTML = safeNotes(initial);
+        if (repairSavedNumbering(node)) persist();
         node.focus();
         const selection = window.getSelection();
         selection?.selectAllChildren(node);
