@@ -32,6 +32,12 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
     const range = selection.getRangeAt(0);
     const { before, after } = lineContext(editor, range.startContainer, range.startOffset);
     const offset = textOffset(editor, range.startContainer, range.startOffset);
+    if (event.key === ' ' && /^[\t \u00a0]*\.\.\.$/.test(before) && !after.trim()) {
+        event.preventDefault();
+        range.setStart(...textPosition(editor, offset - 3, false));
+        document.execCommand('insertHTML', false, '<hr style="border: 0; border-top: 1px solid rgba(100, 116, 139, 0.2); margin: 0.6em 0"><div><br></div>');
+        return true;
+    }
     if (event.key === ' ' && /^[\t \u00a0]*-$/.test(before)) {
         event.preventDefault();
         range.setStart(...textPosition(editor, offset - 1, false));
