@@ -173,7 +173,13 @@ export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEve
     if (!selection?.rangeCount || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return false;
     const range = selection.getRangeAt(0);
     const lines = noteLines(editor);
-    const index = lines.findIndex(line => line.nodes.some(node => node === range.startContainer || node.parentElement?.contains(range.startContainer)));
+    const rangeStart = textOffset(editor, range.startContainer, range.startOffset);
+    let index = lines.findIndex(line => line.nodes.some(node => node === range.startContainer || node.parentElement?.contains(range.startContainer)));
+    if (!selection.isCollapsed) {
+        const boundary = lines.findIndex((line, i) => i > index && line.nodes.length > 0 &&
+            textOffset(editor, line.nodes[0], 0) === rangeStart);
+        if (boundary >= 0) index = boundary;
+    }
     if (index < 0) return false;
     const line = lines[index];
     const marker = line.text.match(numberPrefix);
@@ -185,18 +191,27 @@ export function removeNumberedNoteMarker(editor: HTMLElement, event: KeyboardEve
     const digitEnd = digitStart + marker[2].length;
     const deletedStart = selection.isCollapsed ? start - (event.key === 'Backspace' ? 1 : 0) : start;
     const deletedEnd = selection.isCollapsed ? end + (event.key === 'Delete' ? 1 : 0) : end;
-    if (deletedStart > digitStart || deletedEnd < digitEnd || deletedStart < lineStart || deletedEnd > lineStart + marker[0].length) return false;
+    const deletingSeparator = selection.isCollapsed && deletedStart === lineStart + marker[0].length - 1 &&
+        deletedEnd === lineStart + marker[0].length;
+    const wholeLine = !selection.isCollapsed && deletedStart <= lineStart && deletedEnd >= lineStart + line.text.length &&
+        deletedEnd <= lineStart + line.text.length + 1;
+    if (!wholeLine && !deletingSeparator && (deletedStart > digitStart || deletedEnd < digitEnd || deletedStart < lineStart || deletedEnd > lineStart + marker[0].length)) return false;
 
     const clone = editor.cloneNode(true) as HTMLElement;
     const copyLines = noteLines(clone);
     const remove = document.createRange();
-    remove.setStart(copyLines[index].nodes[0], marker[1].length);
-    let remaining = marker[0].length - marker[1].length;
-    for (const node of copyLines[index].nodes) {
-        const skip = node === copyLines[index].nodes[0] ? marker[1].length : 0;
-        const count = Math.min(remaining, node.length - skip);
-        remaining -= count;
-        if (!remaining) { remove.setEnd(node, skip + count); break; }
+    if (wholeLine) {
+        remove.setStart(clonePosition(editor, clone, range.startContainer), range.startOffset);
+        remove.setEnd(clonePosition(editor, clone, range.endContainer), range.endOffset);
+    } else {
+        remove.setStart(copyLines[index].nodes[0], marker[1].length);
+        let remaining = marker[0].length - marker[1].length;
+        for (const node of copyLines[index].nodes) {
+            const skip = node === copyLines[index].nodes[0] ? marker[1].length : 0;
+            const count = Math.min(remaining, node.length - skip);
+            remaining -= count;
+            if (!remaining) { remove.setEnd(node, skip + count); break; }
+        }
     }
     remove.deleteContents();
     let expected = marker[2];
