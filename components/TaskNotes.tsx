@@ -39,6 +39,36 @@ function safeNotes(html: string) {
     return clean.innerHTML;
 }
 
+function preparePastedNotes(html: string, plainText: string) {
+    const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+    const walker = documentFragment.createTreeWalker(documentFragment.body, NodeFilter.SHOW_TEXT);
+    const indentation: Node[] = [];
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (/^\s*[\r\n]\s*$/.test(node.textContent || '') &&
+            !node.parentElement?.closest('pre') &&
+            (node.previousSibling instanceof Element || node.nextSibling instanceof Element)) indentation.push(node);
+    }
+    indentation.forEach(node => node.remove());
+    const container = document.createElement('div');
+    container.innerHTML = safeNotes(documentFragment.body.innerHTML);
+    if (!/^[\r\n]/.test(plainText)) {
+        while (container.firstChild instanceof HTMLBRElement) container.firstChild.remove();
+    }
+    if (!/[\r\n]$/.test(plainText)) {
+        while (container.lastChild instanceof HTMLBRElement) container.lastChild.remove();
+    }
+    const only = container.firstElementChild;
+    if (container.childNodes.length === 1 && only && /^(DIV|P)$/.test(only.tagName) &&
+        !only.querySelector('div, p, br, ol, ul')) {
+        const inline = document.createElement('span');
+        inline.style.cssText = (only as HTMLElement).style.cssText;
+        inline.append(...Array.from(only.childNodes));
+        only.replaceWith(inline);
+    }
+    return container.innerHTML;
+}
+
 function caretRect(range: Range) {
     const rect = range.getBoundingClientRect();
     if (rect.height) return rect;
@@ -194,7 +224,7 @@ export function TaskNotes({ title, initial, save, close }: {
                     event.preventDefault();
                     const html = event.clipboardData.getData('text/html');
                     if (html) {
-                        const cleaned = safeNotes(html);
+                        const cleaned = preparePastedNotes(html, event.clipboardData.getData('text/plain'));
                         if (cleaned) {
                             format('insertHTML', cleaned);
                             return;
