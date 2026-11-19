@@ -1166,6 +1166,7 @@ export default function App() {
 
     const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
     const failedNote = useRef(false);
+    const saveOpenNotes = useRef<(() => boolean) | null>(null);
     const notesTask = notesTaskId ? findTask(notesTaskId, tasks) : null;
 
     const saveTaskNotes = (id: string, html: string, title?: string) => {
@@ -1199,7 +1200,7 @@ export default function App() {
     };
 
     const openTaskNotes = (id: string) => {
-        if (failedNote.current || findTask(id, tasksRef.current)?.type !== 'item') return;
+        if (findTask(id, tasksRef.current)?.type !== 'item' || saveOpenNotes.current?.() === false) return;
         setContextMenu(previous => ({ ...previous, isOpen: false }));
         setActiveSubmenu(null);
         setMoveTargetListId(null);
@@ -1216,12 +1217,20 @@ export default function App() {
         const down = (event: PointerEvent) => {
             cancel();
             suppressUntil = 0;
-            if (!event.isPrimary || event.button !== 0 || event.ctrlKey || event.shiftKey || event.metaKey || event.altKey) return;
+            if (!event.isPrimary || event.button !== 0 || event.shiftKey || event.altKey) return;
             const target = event.target;
             if (!(target instanceof Element) || target.closest('button, a, input, textarea, select, [contenteditable], [data-drag-handle]')) return;
             const row = target.closest<HTMLElement>('[data-notes-task]');
             if (!row?.dataset.notesTask) return;
             const id = row.dataset.notesTask;
+            if (event.ctrlKey || event.metaKey) {
+                if (findTask(id, tasksRef.current)?.type !== 'item') return;
+                event.preventDefault();
+                event.stopPropagation();
+                suppressUntil = performance.now() + 500;
+                openTaskNotes(id);
+                return;
+            }
             const timer = window.setTimeout(() => {
                 if (!press || !row.isConnected || failedNote.current) return;
                 press.opened = true;
@@ -1244,15 +1253,6 @@ export default function App() {
                 event.stopPropagation();
                 return;
             }
-            if (event.button !== 0 || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
-            const target = event.target;
-            if (!(target instanceof Element) || target.closest('button, a, input, textarea, select, [contenteditable], [data-drag-handle]')) return;
-            const row = target.closest<HTMLElement>('[data-notes-task]');
-            const id = row?.dataset.notesTask;
-            if (!id || failedNote.current || findTask(id, tasksRef.current)?.type !== 'item') return;
-            event.preventDefault();
-            event.stopPropagation();
-            openTaskNotes(id);
         };
         const cancelContext = (event: MouseEvent) => {
             if (press && event.button !== 2) {
@@ -5822,6 +5822,7 @@ export default function App() {
 
             {notesTask && createPortal(
                 <TaskNotes
+                    saveBeforeSwitch={saveOpenNotes}
                     title={new DOMParser().parseFromString(notesTask.title, 'text/html').body.textContent || notesTask.title}
                     initial={notesTask.notesHtml || ''}
                     save={(html, newTitle) => {
@@ -5829,7 +5830,9 @@ export default function App() {
                         if (newTitle !== undefined) escaped.textContent = newTitle;
                         return saveTaskNotes(notesTask.id, html, newTitle === undefined ? undefined : escaped.innerHTML);
                     }}
-                    close={() => { if (!failedNote.current) setNotesTaskId(null); }} />,
+                    close={() => {
+                        if (!failedNote.current) setNotesTaskId(current => current === notesTask.id ? null : current);
+                    }} />,
                 document.body, notesTask.id
             )}
 

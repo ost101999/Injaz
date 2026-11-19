@@ -125,11 +125,12 @@ function moveCaretUp(editor: HTMLElement, event: React.KeyboardEvent, preferredX
     return x;
 }
 
-export function TaskNotes({ title, initial, save, close }: {
+export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
     title: string;
     initial: string;
     save: (html: string, title?: string) => boolean;
     close: () => void;
+    saveBeforeSwitch: React.RefObject<(() => boolean) | null>;
 }) {
     const editor = useRef<HTMLDivElement>(null);
     const caretColumn = useRef<number | null>(null);
@@ -167,6 +168,11 @@ export function TaskNotes({ title, initial, save, close }: {
     }
 
     useLayoutEffect(() => {
+        saveBeforeSwitch.current = persist;
+        return () => { saveBeforeSwitch.current = null; };
+    });
+
+    useLayoutEffect(() => {
         if (closing) return;
         const dismiss = () => {
             if (!persist()) return;
@@ -183,10 +189,10 @@ export function TaskNotes({ title, initial, save, close }: {
             event.stopPropagation();
             dismiss();
         };
-        window.addEventListener('pointerdown', outside, true);
+        document.addEventListener('pointerdown', outside, true);
         window.addEventListener('keydown', escape, true);
         return () => {
-            window.removeEventListener('pointerdown', outside, true);
+            document.removeEventListener('pointerdown', outside, true);
             window.removeEventListener('keydown', escape, true);
         };
     });
