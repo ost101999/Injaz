@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { endNoteHighlight, handleNoteEditing, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
+import { endNoteHighlight, handleNoteEditing, handleNoteFormatShortcut, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
 import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
@@ -20,6 +20,8 @@ function safeNotes(html: string) {
         if (element !== target) {
             if (node.style.backgroundColor) element.style.backgroundColor = node.style.backgroundColor;
             if (node.style.fontWeight) element.style.fontWeight = node.style.fontWeight;
+            if (node.style.fontStyle) element.style.fontStyle = node.style.fontStyle;
+            if (node.style.textDecorationLine === 'underline') element.style.textDecorationLine = 'underline';
             if (node.style.opacity === '0.5') element.style.opacity = '0.5';
             if (node.style.fontSize === '0.85em') element.style.fontSize = '0.85em';
             if (node.tagName === 'SPAN' && node.hasAttribute('data-empty-rtl-number')) element.setAttribute('data-empty-rtl-number', '');
@@ -143,7 +145,8 @@ export function TaskNotes({ title, initial, save, close }: {
                 }}
                 onKeyDown={event => {
                     if (handleSizeShortcut(event)) return;
-                    if (removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
+                    if (handleNoteFormatShortcut(event.currentTarget, event.nativeEvent) ||
+                        removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
                         event.stopPropagation();
                         return;
                     }
