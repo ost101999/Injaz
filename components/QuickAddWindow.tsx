@@ -589,14 +589,21 @@ export const QuickAddWindow = () => {
                         tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700';
                     const isItalic = tag === 'i' || tag === 'em' || style.includes('font-style: italic') || style.includes('font-style:italic');
                     const isUnderline = tag === 'u' || style.includes('text-decoration: underline') || style.includes('text-decoration:underline');
+                    const preservedStyle = document.createElement('span');
+                    for (const property of ['background-color', 'color', 'font-family', 'font-size']) {
+                        const value = el.style.getPropertyValue(property);
+                        if (value) preservedStyle.style.setProperty(property, value);
+                    }
+                    const styleOpen = preservedStyle.style.cssText ? `<span style="${escapeAttr(preservedStyle.style.cssText)}">` : '';
+                    const styleClose = styleOpen ? '</span>' : '';
 
                     const isLink = tag === 'a';
                     const openTag = isLink
                         ? `<a href="${escapeAttr(el.getAttribute('href') || '')}" contenteditable="false" class="text-blue-600 hover:underline cursor-pointer" style="color: #2563eb; text-decoration: underline;">`
-                        : `${isBold ? '<strong>' : ''}${isItalic ? '<em>' : ''}${isUnderline ? '<u>' : ''}`;
+                        : `${styleOpen}${isBold ? '<strong>' : ''}${isItalic ? '<em>' : ''}${isUnderline ? '<u>' : ''}`;
                     const closeTag = isLink
                         ? '</a>'
-                        : `${isUnderline ? '</u>' : ''}${isItalic ? '</em>' : ''}${isBold ? '</strong>' : ''}`;
+                        : `${isUnderline ? '</u>' : ''}${isItalic ? '</em>' : ''}${isBold ? '</strong>' : ''}${styleClose}`;
 
                     const hasBlockDescendant = Array.from(el.querySelectorAll('*')).some(desc =>
                         BLOCK_TAGS.has(desc.tagName.toLowerCase()) || desc.tagName.toLowerCase() === 'br'
