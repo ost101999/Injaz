@@ -25,9 +25,11 @@ function safeNotes(html: string) {
             if (node.style.backgroundColor) element.style.backgroundColor = node.style.backgroundColor;
             if (node.style.fontWeight) element.style.fontWeight = node.style.fontWeight;
             if (node.style.fontStyle) element.style.fontStyle = node.style.fontStyle;
-            if (node.style.textDecorationLine === 'underline') element.style.textDecorationLine = 'underline';
+            if (node.style.textDecorationLine.includes('underline') || node.style.textDecoration.includes('underline')) element.style.textDecorationLine = 'underline';
+            if (node.style.color) element.style.color = node.style.color;
+            if (node.style.fontFamily) element.style.fontFamily = node.style.fontFamily;
+            if (node.style.fontSize) element.style.fontSize = node.style.fontSize;
             if (node.style.opacity === '0.5') element.style.opacity = '0.5';
-            if (node.style.fontSize === '0.85em') element.style.fontSize = '0.85em';
             if (node.tagName === 'SPAN' && node.hasAttribute('data-empty-rtl-number')) element.setAttribute('data-empty-rtl-number', '');
             target.append(element);
         }
@@ -190,6 +192,14 @@ export function TaskNotes({ title, initial, save, close }: {
                 }}
                 onPaste={event => {
                     event.preventDefault();
+                    const html = event.clipboardData.getData('text/html');
+                    if (html) {
+                        const cleaned = safeNotes(html);
+                        if (cleaned) {
+                            format('insertHTML', cleaned);
+                            return;
+                        }
+                    }
                     format('insertText', event.clipboardData.getData('text/plain'));
                 }}
                 onPointerDown={() => { caretColumn.current = null; }}
