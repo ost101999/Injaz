@@ -281,13 +281,15 @@ export function updateNumberedNoteLine(editor: HTMLElement) {
     const text = before + after;
     const match = text.match(numberPrefix);
     const letter = text.slice(match?.[0].length || 0).match(/\p{Letter}/u)?.[0];
-    if (!match || !letter) return;
-    const arabic = /\p{Script=Arabic}/u.test(letter);
-    if (arabic ? !/[0-9]/.test(match[2]) : !/[\u0660-\u0669\u06f0-\u06f9]/.test(match[2])) return;
+    if (!match) return;
 
     const lineStart = textOffset(editor, range.startContainer, range.startOffset) - before.length;
     const [node, offset] = textPosition(editor, lineStart + match[1].length, false);
     if (!(node instanceof Text) || !node.parentElement?.matches('span[style*="opacity"]')) return;
+    node.parentElement.toggleAttribute('data-empty-rtl-number', !letter && /[\u0660-\u0669\u06f0-\u06f9]/.test(match[2]));
+    if (!letter) return;
+    const arabic = /\p{Script=Arabic}/u.test(letter);
+    if (arabic ? !/[0-9]/.test(match[2]) : !/[\u0660-\u0669\u06f0-\u06f9]/.test(match[2])) return;
     const original = {
         start: textOffset(editor, range.startContainer, range.startOffset),
         length: range.toString().length,
@@ -348,12 +350,19 @@ export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): bo
         return true;
     }
 
-    const next = number ? nextNumber(number[2]) + number[3] : '•';
+    const letter = before.slice(prefix.length).match(/\p{Letter}/u)?.[0];
+    const arabic = letter && /\p{Script=Arabic}/u.test(letter);
+    let next = '•';
+    if (number) {
+        const digits = nextNumber(number[2]);
+        next = (arabic ? decimalDigits(digits).replace(/\d/g, digit => String.fromCharCode(0x660 + Number(digit))) : digits) + number[3];
+    }
     const marker = document.createElement('span');
     marker.style.fontWeight = 'bold';
     marker.style.opacity = '0.5';
     marker.style.fontSize = '0.85em';
     marker.textContent = (number || bullet)![1] + next;
+    if (number && arabic) marker.setAttribute('data-empty-rtl-number', '');
     document.execCommand('insertHTML', false, `<br>${marker.outerHTML}&nbsp;`);
     return true;
 }

@@ -184,6 +184,10 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
         assert.equal(await text(notes), '١- عربي');
         await page.keyboard.press('Enter');
         assert.equal(await text(notes), '١- عربي\n٢-', await page.$eval(notes, e => e.innerHTML));
+        assert.equal(await page.$eval(notes, editor => {
+            const marker = editor.querySelector('[data-empty-rtl-number]');
+            return !!marker && editor.getBoundingClientRect().right - marker.getBoundingClientRect().right < 40;
+        }), true, 'The next Arabic number appears on the right before typing');
         await page.keyboard.sendCharacter('نص');
         await page.keyboard.press('Enter');
         assert.equal(await text(notes), '١- عربي\n٢- نص\n٣-');
