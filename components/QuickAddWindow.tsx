@@ -85,7 +85,20 @@ export const QuickAddWindow = () => {
         ipcRenderer.on('show-quick-note', handleShow);
         ipcRenderer.on('hide-quick-note', handleHide);
         ipcRenderer.on('request-clear-and-close', handleClearAndClose);
+        const focusEditor = () => inputRef.current?.focus();
+        ipcRenderer.on('focus-quick-add', focusEditor);
+        ipcRenderer.send('quick-note-ready');
 
+        return () => {
+            ipcRenderer.off('show-quick-note', handleShow);
+            ipcRenderer.off('hide-quick-note', handleHide);
+            ipcRenderer.off('request-clear-and-close', handleClearAndClose);
+            ipcRenderer.off('focus-quick-add', focusEditor);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!ipcRenderer) return;
         const handleBroadcastSync = (_: any, type: string) => {
             // When main window changes something, we might need to refresh lists/folders
             if (showListPopup) {
@@ -102,14 +115,12 @@ export const QuickAddWindow = () => {
         ipcRenderer.on('data-updated', handleBroadcastSync);
 
         return () => {
-            ipcRenderer.off('show-quick-note', handleShow);
-            ipcRenderer.off('hide-quick-note', handleHide);
-            ipcRenderer.off('request-clear-and-close', handleClearAndClose);
             ipcRenderer.off('data-updated', handleBroadcastSync);
         };
     }, [showListPopup, hoveredListId]);
 
-    const handleTransitionEnd = () => {
+    const handleTransitionEnd = (event: React.TransitionEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget || event.propertyName !== 'opacity') return;
         if (!isVisible && ipcRenderer) {
             ipcRenderer.send('quick-note-hidden');
 
@@ -198,20 +209,10 @@ export const QuickAddWindow = () => {
         };
     }, [isVisible, isMaximized]);
 
-    // Focus Listeners & Transparency Fix
     useEffect(() => {
         document.body.style.backgroundColor = 'transparent';
-        if (inputRef.current) inputRef.current.focus();
-        const focusHandler = () => inputRef.current?.focus();
-
-        if (ipcRenderer) {
-            ipcRenderer.on('focus-quick-add', focusHandler);
-        }
-
-        return () => {
-            document.body.style.backgroundColor = '';
-            if (ipcRenderer) ipcRenderer.removeListener('focus-quick-add', focusHandler);
-        };
+        if (!ipcRenderer) inputRef.current?.focus();
+        return () => { document.body.style.backgroundColor = ''; };
     }, []);
 
     // Fetch lists when popup opens
