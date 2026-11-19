@@ -156,6 +156,17 @@ export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): bo
     if (after.trim() || line.closest('li')) return false;
     const number = before.match(numberPrefix);
     const bullet = before.match(/^([\t \u00a0]*)•/);
+    if (event.key === ' ' && number && before === number[0]) {
+        event.preventDefault();
+        const offset = textOffset(editor, range.startContainer, range.startOffset);
+        range.setStart(...textPosition(editor, offset - before.length, false));
+        const marker = document.createElement('span');
+        marker.style.fontWeight = 'bold';
+        marker.style.opacity = '0.5';
+        marker.textContent = before;
+        document.execCommand('insertHTML', false, `${marker.outerHTML}&nbsp;`);
+        return true;
+    }
     if (event.key === ' ' && /^[\t \u00a0]*[.-]$/.test(before)) {
         event.preventDefault();
         const offset = textOffset(editor, range.startContainer, range.startOffset);
@@ -177,6 +188,7 @@ export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): bo
     const next = number ? nextNumber(number[2]) + number[3] : '•';
     const marker = document.createElement('span');
     marker.style.fontWeight = 'bold';
+    marker.style.opacity = '0.5';
     marker.textContent = (number || bullet)![1] + next;
     document.execCommand('insertHTML', false, `<br>${marker.outerHTML}&nbsp;`);
     return true;
