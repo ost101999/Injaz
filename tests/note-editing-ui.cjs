@@ -78,6 +78,13 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
             assert.equal(await text(editor), '1- one\n two\n2- three');
             await shortcut('KeyZ');
             assert.equal(await text(editor), '1- one\n2- two\n3- three');
+            for (const key of ['Space', 'Enter']) {
+                await setMarkup(editor, '<div><span style="background-color:yellow">word</span></div>', 0, 4);
+                await page.keyboard.press(key);
+                await page.keyboard.type('next');
+                assert.equal(await text(editor), key === 'Space' ? 'word next' : 'word\nnext');
+                assert.equal(await page.$eval(editor, element => element.querySelector('[style*="background-color: yellow"], [style*="background-color:yellow"]').textContent), 'word');
+            }
             if (process.env.RENUMBER_ONLY) return;
             await setMarkup(editor, 'left<b>MID</b>right', 4, 7, true);
             await page.keyboard.press('Space');

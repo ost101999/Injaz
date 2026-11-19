@@ -302,6 +302,38 @@ export function updateNumberedNoteLine(editor: HTMLElement) {
     restoreSelection(editor, selection, original);
 }
 
+export function endNoteHighlight(editor: HTMLElement, event: KeyboardEvent): boolean {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+        (event.key !== ' ' && event.key !== 'Enter')) return false;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+
+    const end = textOffset(editor, range.endContainer, range.endOffset);
+    if (end === 0) return false;
+    const [previousChar] = textPosition(editor, end - 1, false);
+    let highlight = previousChar.parentElement;
+    while (highlight && highlight !== editor) {
+        const color = highlight.style.backgroundColor;
+        if (highlight.tagName === 'MARK' || (color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)')) break;
+        highlight = highlight.parentElement;
+    }
+    if (!highlight || highlight === editor || (!range.collapsed && !highlight.contains(range.startContainer))) return false;
+    const highlightedText = document.createRange();
+    highlightedText.selectNodeContents(highlight);
+    if (end !== textOffset(editor, highlight, highlight.childNodes.length) ||
+        (range.collapsed && range.compareBoundaryPoints(Range.END_TO_END, highlightedText) > 0 &&
+            range.endContainer !== highlight.parentNode)) return false;
+
+    selection.collapseToEnd();
+    event.preventDefault();
+    document.execCommand('insertHTML', false, event.key === ' '
+        ? '<span style="background-color: transparent">&nbsp;</span>'
+        : '<div><br></div>');
+    return true;
+}
+
 export function handleNoteEditing(editor: HTMLElement, event: KeyboardEvent): boolean {
     if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey ||
         (event.key !== ' ' && (event.key !== 'Enter' || event.shiftKey))) return false;

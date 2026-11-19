@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { handleNoteEditing, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
+import { endNoteHighlight, handleNoteEditing, removeNumberedNoteMarker, repairSavedNumbering, updateNumberedNoteLine } from './noteEditing';
 import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
@@ -160,7 +160,8 @@ export function TaskNotes({ title, initial, save, close }: {
                             return;
                         }
                     }
-                    if (handleNoteEditing(event.currentTarget, event.nativeEvent)) event.stopPropagation();
+                    if (endNoteHighlight(event.currentTarget, event.nativeEvent) ||
+                        handleNoteEditing(event.currentTarget, event.nativeEvent)) event.stopPropagation();
                 }} />
             {failed && <footer role="alert">تعذر الحفظ. <button type="button" onClick={persist}>إعادة المحاولة</button></footer>}
         </aside>
