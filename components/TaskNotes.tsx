@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { endNoteHighlight, handleNoteEditing, handleNoteFormatShortcut, removeNumberedNoteMarker, repairSavedNumbering, toggleNoteHighlight, updateNumberedNoteLine } from './noteEditing';
+import { endNoteHighlight, handleNoteEditing, handleNoteFormatShortcut, prepareNoteArrowSelection, removeNumberedNoteMarker, repairSavedNumbering, toggleNoteHighlight, updateNumberedNoteLine } from './noteEditing';
 import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
@@ -254,6 +254,7 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
                 onPointerDown={() => { caretColumn.current = null; }}
                 onBlur={() => { caretColumn.current = null; }}
                 onKeyDown={event => {
+                    prepareNoteArrowSelection(event.currentTarget, event.nativeEvent);
                     caretColumn.current = event.key === 'ArrowUp'
                         ? moveCaretUp(event.currentTarget, event, caretColumn.current)
                         : null;

@@ -23,6 +23,16 @@ function lineContext(editor: HTMLElement, node: Node, offset: number) {
     return { before, after, line };
 }
 
+export function prepareNoteArrowSelection(editor: HTMLElement, event: KeyboardEvent) {
+    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
+        (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    const selection = window.getSelection();
+    if (!selection?.focusNode || !editor.contains(selection.focusNode)) return;
+    const { before, after } = lineContext(editor, selection.focusNode, selection.focusOffset);
+    const firstLetter = (before + after).match(/[A-Za-z\u0621-\u063a\u0641-\u064a\u066e-\u06d3]/)?.[0];
+    if (firstLetter) editor.style.direction = /[A-Za-z]/.test(firstLetter) ? 'ltr' : 'rtl';
+}
+
 function textOffset(editor: HTMLElement, node: Node, offset: number) {
     const range = document.createRange();
     range.selectNodeContents(editor);
