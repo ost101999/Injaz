@@ -61,6 +61,14 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
             getSelection().setBaseAndExtent(...(backward ? end : start), ...(backward ? start : end));
         }, html, from, to, backward);
         const exerciseEditor = async editor => {
+            await setMarkup(editor, '<div><span style="font-weight:bold;opacity:0.5">١-</span> أول</div><div><span style="font-weight:bold;opacity:0.5">٢-</span> ثاني</div><div><span style="font-weight:bold;opacity:0.5">٣-</span> ثالث</div>', 1);
+            await page.keyboard.press('Backspace');
+            assert.equal(await text(editor), ' أول\n١- ثاني\n٢- ثالث');
+            await shortcut('KeyZ');
+            assert.equal(await text(editor), '١- أول\n٢- ثاني\n٣- ثالث');
+            await shortcut('KeyY');
+            assert.equal(await text(editor), ' أول\n١- ثاني\n٢- ثالث');
+            if (process.env.RENUMBER_ONLY) return;
             await setMarkup(editor, 'left<b>MID</b>right', 4, 7, true);
             await page.keyboard.press('Space');
             assert.equal(await text(editor), 'left MID right');
@@ -185,6 +193,11 @@ const origin = process.env.INJAZ_TEST_URL || 'http://127.0.0.1:4027';
         await page.waitForSelector(quick);
         assert.match(await page.$eval(quick, element => getComputedStyle(element).fontFamily), /Amiri/);
         await exerciseEditor(quick);
+        if (process.env.RENUMBER_ONLY) {
+            assert.deepEqual(errors, []);
+            console.log('Numbered list deletion checks passed in both editors.');
+            return;
+        }
         await setMarkup(quick, 'https://example.test', 20);
         await page.keyboard.press('Enter');
         assert.equal(await page.$eval(quick + ' a', link => link.origin), 'https://example.test');

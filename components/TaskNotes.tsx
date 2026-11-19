@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { handleNoteEditing, updateNumberedNoteLine } from './noteEditing';
+import { handleNoteEditing, removeNumberedNoteMarker, updateNumberedNoteLine } from './noteEditing';
 import './TaskNotes.css';
 
 const highlight = '#fef08a';
@@ -138,6 +138,10 @@ export function TaskNotes({ title, initial, save, close }: {
                     format('insertText', event.clipboardData.getData('text/plain'));
                 }}
                 onKeyDown={event => {
+                    if (removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
+                        event.stopPropagation();
+                        return;
+                    }
                     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.nativeEvent.isComposing) {
                         const command = !event.shiftKey && event.code === 'KeyB' ? 'bold'
                             : event.shiftKey && event.code === 'KeyW' ? 'hiliteColor'
