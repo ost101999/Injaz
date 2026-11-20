@@ -254,6 +254,23 @@ export default function App() {
     };
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isListPickerOpen, setIsListPickerOpen] = useState(false);
+    const listPickerRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!isListPickerOpen) return;
+        const onPointerDown = (event: MouseEvent) => {
+            if (!listPickerRef.current?.contains(event.target as Node)) setIsListPickerOpen(false);
+        };
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsListPickerOpen(false);
+        };
+        document.addEventListener('mousedown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', onPointerDown);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [isListPickerOpen]);
     const [isCreatingList, setIsCreatingList] = useState(false);
     const [newListTitle, setNewListTitle] = useState('');
 
@@ -4201,12 +4218,23 @@ export default function App() {
                 <div className="flex items-center gap-3 justify-start" style={{ WebkitAppRegion: 'no-drag' } as any}>
                     <div className="flex items-center gap-2">
                         <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icons.Check size={24} /></div>
-                        <h1 className="text-xl font-bold text-indigo-900">إنجاز</h1>
                     </div>
                     {activeTab === 'tasks' && viewMode === 'groups' && activeList && (
-                        <div key={activeList.id} className="min-w-0 max-w-[10rem] flex items-center gap-2 rounded-full bg-indigo-50/70 px-3 py-1.5 text-xs font-bold text-indigo-700 animate-fadeIn motion-reduce:animate-none" title={activeList.title}>
-                            <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-indigo-400" />
-                            <span className="truncate">{activeList.title}</span>
+                        <div ref={listPickerRef} className="relative min-w-0">
+                            <button type="button" onClick={() => setIsListPickerOpen(open => !open)} aria-expanded={isListPickerOpen} aria-haspopup="true" title="عرض القوائم" className="min-w-0 max-w-[10rem] flex items-center gap-2 rounded-full bg-indigo-50/70 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
+                                <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-indigo-400" />
+                                <span className="truncate">{activeList.title}</span>
+                            </button>
+                            {isListPickerOpen && (
+                                <div dir="rtl" className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-2rem)] max-h-[min(60vh,24rem)] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2 shadow-xl animate-fadeIn motion-reduce:animate-none z-50">
+                                    {lists.map(list => (
+                                        <button key={list.id} type="button" onClick={() => { navigateToList(list.id); setIsListPickerOpen(false); }} aria-current={list.id === activeList.id ? 'true' : undefined} className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${list.id === activeList.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                                            <span className={`h-2 w-2 shrink-0 rounded-full ${list.id === activeList.id ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                                            <span className="min-w-0 truncate">{list.title}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
