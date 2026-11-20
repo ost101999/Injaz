@@ -32,6 +32,7 @@ P A C K U P/
 scratch/
 .env.local
 OAuth*.json
+client_secret*.json
 .agent/
 .agents/
 التوكن.txt

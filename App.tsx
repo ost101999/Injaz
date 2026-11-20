@@ -4666,14 +4666,12 @@ export default function App() {
                                                     </button>
                                                 ) : (
                                                     <div className="flex items-center gap-3 shrink-0">
-                                                        {googleSyncError && (
                                                             <button
                                                                 onClick={() => setGoogleAuthRequired(true)}
                                                                 className="text-xs text-indigo-600 hover:text-indigo-800 font-bold transition"
                                                             >
                                                                 إعادة الربط
                                                             </button>
-                                                        )}
                                                         <button
                                                             onClick={() => syncGoogleTasks()}
                                                             disabled={isSyncingGoogle}
