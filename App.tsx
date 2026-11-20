@@ -181,6 +181,7 @@ export default function App() {
     const googleSyncRequestedRef = useRef(false);
     const googleSyncRunnerRef = useRef<(() => void) | null>(null);
     const [googleSyncError, setGoogleSyncError] = useState('');
+    const [googleAuthRequired, setGoogleAuthRequired] = useState(false);
     const googleEditingRef = useRef<string | null>(null);
     const googleContextRef = useRef('');
     const googleContext = JSON.stringify([googleTokens, googleSelectedListIds, googleListId]);
@@ -384,9 +385,21 @@ export default function App() {
                 }
             }
             setGoogleSyncError('');
+            setGoogleAuthRequired(false);
         } catch (error) {
             console.error('[Sync] Failed to sync Google Tasks:', error);
-            if (isCurrent()) setGoogleSyncError('تعذرت المزامنة مع جوجل. تغييراتك محفوظة محلياً؛ أعد المحاولة عند عودة الاتصال.');
+            if (isCurrent()) {
+                const details = String((error as Error)?.message || error);
+                const authRequired = details.includes('GOOGLE_AUTH_REQUIRED');
+                setGoogleAuthRequired(authRequired);
+                setGoogleSyncError(authRequired
+                    ? 'انتهى ربط جوجل. أعد ربط الحساب لاستكمال المزامنة؛ تغييراتك محفوظة على الجهاز.'
+                    : details.includes('GOOGLE_ACCESS_DENIED')
+                        ? 'جوجل رفض الوصول للمهام. تحقق من صلاحية التطبيق ثم أعد ربط الحساب.'
+                        : details.includes('GOOGLE_NOT_FOUND')
+                            ? 'تعذر العثور على قائمة أو مهمة في جوجل. تحقق من القوائم المحددة.'
+                            : 'تعذرت المزامنة مع جوجل. تغييراتك محفوظة على الجهاز؛ سنعيد المحاولة تلقائياً.');
+            }
         } finally {
             isSyncingGoogleRef.current = false;
             setIsSyncingGoogle(false);
@@ -414,7 +427,7 @@ export default function App() {
                     }
                 }).catch(error => {
                     console.error('[Google Tasks] Lists:', error);
-                    setGoogleSyncError('تعذر تحميل قوائم جوجل. أعد المحاولة.');
+                    // The sync worker reports the error and retries.
                 });
             }
         }
@@ -442,12 +455,14 @@ export default function App() {
                 syncGoogleTasks();
             };
             window.addEventListener('focus', handleFocus);
+            window.addEventListener('online', handleFocus);
 
             // Periodic sync every 2 minutes
-            const interval = setInterval(syncGoogleTasks, 2 * 60 * 1000);
+            const interval = setInterval(() => { void syncGoogleTasks(); }, 2 * 60 * 1000);
 
             return () => {
                 window.removeEventListener('focus', handleFocus);
+                window.removeEventListener('online', handleFocus);
                 clearInterval(interval);
             };
         }
@@ -4613,12 +4628,12 @@ export default function App() {
                                                     <div className="min-w-0">
                                                         <h4 className="text-sm font-bold text-gray-800">مهام جوجل</h4>
                                                         <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
-                                                            {googleTokens ? (<><span className="w-1.5 h-1.5 bg-green-500 rounded-full" />مرتبط</>) : 'غير مرتبط'}
+                                                            {googleTokens ? googleSyncError ? (<><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />المزامنة متوقفة</>) : (<><span className="w-1.5 h-1.5 bg-green-500 rounded-full" />مرتبط</>) : 'غير مرتبط'}
                                                         </p>
                                                     </div>
                                                 </div>
 
-                                                {!googleTokens ? (
+                                                {(!googleTokens || googleAuthRequired) ? (
                                                     <button
                                                         onClick={async (e) => {
                                                             const btn = e.currentTarget;
@@ -4633,6 +4648,8 @@ export default function App() {
                                                                 const tokens = await ipc.invoke('google-tasks:auth');
                                                                 setGoogleTokens(tokens);
                                                                 localStorage.setItem('injaz_google_tokens', JSON.stringify(tokens));
+                                                                setGoogleAuthRequired(false);
+                                                                setGoogleSyncError('');
                                                                 setNotification({ message: 'تم الربط بجوجل بنجاح!', type: 'success' });
                                                             } catch (err: any) {
                                                                 console.error('Google Auth Error:', err);
@@ -4645,10 +4662,18 @@ export default function App() {
                                                         }}
                                                         className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold transition shrink-0"
                                                     >
-                                                        ربط
+                                                        {googleAuthRequired ? 'إعادة الربط' : 'ربط'}
                                                     </button>
                                                 ) : (
                                                     <div className="flex items-center gap-3 shrink-0">
+                                                        {googleSyncError && (
+                                                            <button
+                                                                onClick={() => setGoogleAuthRequired(true)}
+                                                                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold transition"
+                                                            >
+                                                                إعادة الربط
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => syncGoogleTasks()}
                                                             disabled={isSyncingGoogle}
@@ -4668,6 +4693,7 @@ export default function App() {
                                                                 googleAccountRef.current = '';
                                                                 initialSyncDone.current = false;
                                                                 setGoogleSyncError('');
+                                                                setGoogleAuthRequired(false);
                                                                 localStorage.removeItem('injaz_google_tokens');
                                                                 setNotification({ message: 'تم فصل الحساب.', type: 'success' });
                                                             }}

@@ -201,7 +201,7 @@ test('queued move-out deletion survives offline and is acknowledged before the n
 // Execute the actual Electron handlers with a fake API (no account/network access).
 function handlers(api) {
     const source = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
-    const start = source.indexOf("    ipcMain.handle('google-tasks:fetch-lists'");
+    const start = source.indexOf('    function googleTasksError(');
     const end = source.indexOf("    ipcMain.handle('select-sync-file'", start);
     const js = ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
     const registered = {};
@@ -228,4 +228,13 @@ test('Electron rejects failed or partial downloads instead of returning an empty
         return { data: { items: [{ id: 'first' }], nextPageToken: 'next' } };
     } } });
     await assert.rejects(ipc['google-tasks:fetch'](null, { tokens: {}, listIds: ['list'] }));
+});
+
+test('Electron distinguishes expired authorization from connection errors', async () => {
+    const auth = handlers({ tasklists: { list: async () => {
+        throw { response: { status: 400, data: { error: 'invalid_grant' } } };
+    } } });
+    await assert.rejects(auth['google-tasks:fetch-lists'](null, {}), /GOOGLE_AUTH_REQUIRED/);
+    const offline = handlers({ tasklists: { list: async () => { throw new Error('offline'); } } });
+    await assert.rejects(offline['google-tasks:fetch-lists'](null, {}), /GOOGLE_SYNC_UNAVAILABLE/);
 });
