@@ -1541,6 +1541,16 @@ if (!gotTheLock) {
         });
     });
 
+    // Return safe error categories across IPC without exposing credentials.
+    function googleTasksError(error: any): Error {
+        const status = Number(error?.response?.status || error?.status || error?.code);
+        const reason = String(error?.response?.data?.error || error?.message || '').toLowerCase();
+        if (status === 401 || reason.includes('invalid_grant') || reason.includes('invalid_credentials')) return new Error('GOOGLE_AUTH_REQUIRED');
+        if (status === 403) return new Error('GOOGLE_ACCESS_DENIED');
+        if (status === 404) return new Error('GOOGLE_NOT_FOUND');
+        return new Error('GOOGLE_SYNC_UNAVAILABLE');
+    }
+
     ipcMain.handle('google-tasks:fetch-lists', async (event, tokens) => {
         try {
             oauth2Client.setCredentials(tokens);
@@ -1555,7 +1565,7 @@ if (!gotTheLock) {
             return lists;
         } catch (error) {
             console.error('[Google Tasks] Fetch Lists Error:', error);
-            throw new Error('تعذر تحميل قوائم مهام جوجل');
+            throw googleTasksError(error);
         }
     });
 
@@ -1589,7 +1599,7 @@ if (!gotTheLock) {
         } catch (error) {
             console.error('Google Tasks Fetch Error:', error);
             // A failed request must never look like an empty, successful snapshot.
-            throw new Error('تعذر تحميل مهام جوجل؛ لم يتم تغيير المهام المحلية');
+            throw googleTasksError(error);
         }
     });
 
@@ -1610,7 +1620,7 @@ if (!gotTheLock) {
             return true;
         } catch (error) {
             console.error('[Google Tasks] Update Error:', error);
-            throw new Error('تعذر حفظ تعديل المهمة في جوجل');
+            throw googleTasksError(error);
         }
     });
 
@@ -1624,7 +1634,7 @@ if (!gotTheLock) {
             // The task may already have been deleted or moved in Google Tasks.
             if (error?.code === 404 || error?.status === 404) return true;
             console.error('[Google Tasks] Delete Error:', error);
-            throw new Error('تعذر حذف المهمة من جوجل');
+            throw googleTasksError(error);
         }
     });
 
@@ -1644,7 +1654,7 @@ if (!gotTheLock) {
             return res.data.id;
         } catch (error) {
             console.error('[Google Tasks] Create Error:', error);
-            throw new Error('تعذر إنشاء المهمة في جوجل');
+            throw googleTasksError(error);
         }
     });
 
