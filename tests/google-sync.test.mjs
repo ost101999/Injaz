@@ -205,8 +205,8 @@ function handlers(api) {
     const end = source.indexOf("    ipcMain.handle('select-sync-file'", start);
     const js = ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
     const registered = {};
-    new Function('ipcMain', 'oauth2Client', 'google', 'console', js)(
-        { handle: (name, fn) => { registered[name] = fn; } }, { setCredentials() {} }, { tasks: () => api }, { error() {} });
+    new Function('ipcMain', 'googleClientForTokens', 'google', 'console', js)(
+        { handle: (name, fn) => { registered[name] = fn; } }, () => ({ setCredentials() {} }), { tasks: () => api }, { error() {} });
     return registered;
 }
 

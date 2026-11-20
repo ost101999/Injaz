@@ -338,6 +338,18 @@ const oauth2Client = new google.auth.OAuth2(
     GOOGLE_REDIRECT_URI
 );
 
+// Personal credentials are stored outside the app bundle and source repository.
+function personalGoogleClient() {
+    const filename = path.join(app.getPath('appData'), 'InjazGoogleAuth', 'client.json');
+    const data = JSON.parse(fs.readFileSync(filename, 'utf8')).installed;
+    if (!data?.client_id || !data?.client_secret) throw new Error('Personal Google credentials are invalid');
+    return new google.auth.OAuth2(data.client_id, data.client_secret, GOOGLE_REDIRECT_URI);
+}
+
+function googleClientForTokens(tokens: any) {
+    return tokens?.injaz_personal_client ? personalGoogleClient() : oauth2Client;
+}
+
 // Scopes for Google Tasks
 const SCOPES = ['https://www.googleapis.com/auth/tasks'];
 
@@ -1462,8 +1474,11 @@ if (!gotTheLock) {
     // --- GOOGLE TASKS IPC HANDLERS ---
 
     ipcMain.handle('google-tasks:auth', async () => {
+        const personalPath = path.join(app.getPath('appData'), 'InjazGoogleAuth', 'client.json');
+        const usingPersonalClient = fs.existsSync(personalPath);
+        const authClient = usingPersonalClient ? personalGoogleClient() : oauth2Client;
         return new Promise((resolve, reject) => {
-            const authUrl = oauth2Client.generateAuthUrl({
+            const authUrl = authClient.generateAuthUrl({
                 access_type: 'offline',
                 scope: SCOPES,
                 prompt: 'consent'
@@ -1500,10 +1515,10 @@ if (!gotTheLock) {
 
                     if (!settled) {
                         server.close();
-                        const { tokens } = await oauth2Client.getToken(code);
-                        oauth2Client.setCredentials(tokens);
+                        const { tokens } = await authClient.getToken(code);
+                        authClient.setCredentials(tokens);
                         settled = true;
-                        resolve(tokens);
+                        resolve(usingPersonalClient ? { ...tokens, injaz_personal_client: true } : tokens);
                     }
                 } catch (e) {
                     if (!settled) {
@@ -1553,6 +1568,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('google-tasks:fetch-lists', async (event, tokens) => {
         try {
+            const oauth2Client = googleClientForTokens(tokens);
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
             const lists = [];
@@ -1571,6 +1587,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('google-tasks:fetch', async (event, { tokens, listIds }) => {
         try {
+            const oauth2Client = googleClientForTokens(tokens);
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
             
@@ -1605,6 +1622,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('google-tasks:update-task', async (event, { tokens, taskId, listId, completed, title }) => {
         try {
+            const oauth2Client = googleClientForTokens(tokens);
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
             
@@ -1626,6 +1644,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('google-tasks:delete-task', async (event, { tokens, taskId, listId }) => {
         try {
+            const oauth2Client = googleClientForTokens(tokens);
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
             await tasksApi.tasks.delete({ tasklist: listId || '@default', task: taskId });
@@ -1640,6 +1659,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('google-tasks:create-task', async (event, { tokens, listId, title, parentId, completed }) => {
         try {
+            const oauth2Client = googleClientForTokens(tokens);
             oauth2Client.setCredentials(tokens);
             const tasksApi = google.tasks({ version: 'v1', auth: oauth2Client });
             
