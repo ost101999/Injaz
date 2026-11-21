@@ -388,6 +388,12 @@ export default function App() {
                 if (!result || !Array.isArray(result.tasks)) throw new Error('تعذر جلب مهام جوجل');
                 if (!Array.isArray(availableLists)) throw new Error('تعذر تحميل قوائم جوجل');
                 if (!isCurrent() || googleEditingRef.current) return;
+                // A task may have been moved while this snapshot was downloading.
+                // Upload its queued deletion before accepting any remote snapshot.
+                if (googlePendingDeletionsRef.current.length > 0) {
+                    googleSyncRequestedRef.current = true;
+                    return;
+                }
                 setGoogleAllLists(availableLists);
                 const selectedLists = selectedIds.includes('@default')
                     ? availableLists.slice(0, 1).map(list => ({ ...list, id: '@default' }))

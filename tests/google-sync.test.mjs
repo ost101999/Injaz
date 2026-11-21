@@ -198,6 +198,31 @@ test('queued move-out deletion survives offline and is acknowledged before the n
     assert.deepEqual(deletions, []);
 });
 
+test('moving the last Google task preserves its local copy and deletes the remote original', async () => {
+    const listId = 'second-list';
+    const googleFolder = { ...folder([local()]), id: googleListFolderId(listId), googleListId: listId, isGoogleListFolder: true };
+    const destination = task({ id: 'destination', type: 'folder', parentId: null, children: [] });
+    const moved = { ...googleFolder.children[0], parentId: destination.id };
+    const result = detachGoogleTasksMovedOutside([googleFolder, destination], [
+        { ...googleFolder, children: [] }, { ...destination, children: [moved] }
+    ]);
+    let tasks = markGoogleChanges([googleFolder, destination], result.tasks, listId);
+    let deletions = result.deletions;
+    assert.equal(find(tasks).googleTaskId, undefined);
+    await uploadGoogleChanges({ getTasks: () => tasks, apply: fn => { tasks = fn(tasks); },
+        getDeletions: () => deletions, applyDeletions: fn => { deletions = fn(deletions); },
+        tokens: {}, isCurrent: () => true, invoke: async (name, data) => {
+            assert.equal(name, 'google-tasks:delete-task');
+            assert.equal(data.taskId, 'remote');
+            return true;
+        }
+    });
+    tasks = mergeGoogleTasks(tasks, [], 'default', [{ id: listId, title: 'Home' }]);
+    assert.equal(find(tasks).parentId, destination.id);
+    assert.equal(find(tasks, googleListFolderId(listId)).children.length, 0);
+    assert.deepEqual(deletions, []);
+});
+
 // Execute the actual Electron handlers with a fake API (no account/network access).
 function handlers(api) {
     const source = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
