@@ -4,7 +4,7 @@ import { useNoteFontSize } from './useNoteFontSize';
 import './TaskNotes.css';
 
 const highlight = '#fef08a';
-const allowedNoteElements = new Set(['DIV', 'P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'OL', 'UL', 'LI', 'SPAN', 'MARK']);
+const allowedNoteElements = new Set(['DIV', 'P', 'BR', 'HR', 'B', 'STRONG', 'I', 'EM', 'U', 'OL', 'UL', 'LI', 'SPAN', 'MARK']);
 
 function safeNotes(html: string) {
     const template = document.createElement('template');
@@ -158,7 +158,7 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
         const node = editor.current!;
         const input = titleInput.current!;
         const nextTitle = titleEdited.current ? input.value.trim() : title;
-        const saved = save(node.textContent?.trim() ? safeNotes(node.innerHTML) : '', nextTitle && nextTitle !== title ? nextTitle : undefined);
+        const saved = save(node.textContent?.trim() || node.querySelector('hr') ? safeNotes(node.innerHTML) : '', nextTitle && nextTitle !== title ? nextTitle : undefined);
         setFailed(!saved);
         if (saved && titleEdited.current) {
             titleEdited.current = false;
