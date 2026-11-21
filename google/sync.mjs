@@ -67,7 +67,26 @@ export function mergeGoogleTasks(previous, remote, targetListId, googleLists = [
     const allLocal = flattenTasks(previous);
     const localByRemote = new Map(allLocal.filter(t => t.googleTaskId).map(t => [remoteKey(t.googleListId, t.googleTaskId), t]));
     const remoteByKey = new Map(remote.map(t => [remoteKey(t.listId, t.id), t]));
-    const idFor = (listId, id) => localByRemote.get(remoteKey(listId, id))?.id || `google_${listId}_${id}`;
+    // A detached local copy may still use the old deterministic Google ID.
+    // Never give a newly pulled task that same ID, and repair existing clashes.
+    const idCounts = new Map();
+    for (const task of allLocal) idCounts.set(task.id, (idCounts.get(task.id) || 0) + 1);
+    const usedIds = new Set(idCounts.keys());
+    const assignedIds = new Map();
+    const idFor = (listId, id) => {
+        const key = remoteKey(listId, id);
+        if (assignedIds.has(key)) return assignedIds.get(key);
+        const local = localByRemote.get(key);
+        let candidate = local?.id || `google_${listId}_${id}`;
+        if (local ? idCounts.get(candidate) > 1 : usedIds.has(candidate)) {
+            const base = candidate;
+            let suffix = 1;
+            while (usedIds.has(candidate)) candidate = `${base}__google_${suffix++}`;
+        }
+        usedIds.add(candidate);
+        assignedIds.set(key, candidate);
+        return candidate;
+    };
     const defaultGoogleListId = googleLists[0]?.id || remote[0]?.listId ||
         allLocal.find(t => t.googleListId)?.googleListId || '@default';
     const listFolders = new Map();

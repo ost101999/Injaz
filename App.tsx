@@ -10,6 +10,7 @@ import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
 import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
 import { detachGoogleTasksMovedOutside, flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
+import { availableMenuSide } from './utils/contextMenu.mjs';
 
 // Simple ID generator
 function preserveTaskNotes(current: Task[], restored: Task[]) {
@@ -1160,18 +1161,9 @@ export default function App() {
                     const parentRect = parent.getBoundingClientRect();
                     const { top: anchorTop } = anchor.getBoundingClientRect();
                     const childRect = child.getBoundingClientRect();
-                    const gap = 5;
-                    const left = parentRect.left - childRect.width - gap;
-                    const right = parentRect.right + gap;
-                    const fits = (x: number) =>
-                        x >= margin - 0.5 && x + childRect.width <= window.innerWidth - margin + 0.5 &&
-                        visiblePanels.every(node => {
-                            const rect = node.getBoundingClientRect();
-                            return x + childRect.width <= rect.left + 0.5 || x >= rect.right - 0.5;
-                        });
-
                     // On a narrow window the child replaces the previous panels and offers a Back action.
-                    const side = fits(left) ? left : fits(right) ? right : null;
+                    const side = availableMenuSide(parentRect, childRect.width,
+                        visiblePanels.map(node => node.getBoundingClientRect()), window.innerWidth, margin);
                     if (side === null) {
                         child.dataset.drilldown = 'true';
                         visiblePanels.forEach(node => { node.style.visibility = 'hidden'; });
@@ -6196,23 +6188,33 @@ export default function App() {
                                         <div className="relative">
                                             <div className="space-y-1 max-h-64 overflow-y-auto">
                                                 {lists.map(l => (
-                                                    <button
+                                                    <div
                                                         key={l.id}
                                                         data-folder-anchor={moveTargetListId === l.id ? "true" : undefined}
-                                                        onMouseEnter={() => setMoveTargetListId(l.id)}
-                                                        onFocus={() => setMoveTargetListId(l.id)}
-                                                        onClick={() => {
+                                                        onMouseEnter={event => {
+                                                            const submenu = event.currentTarget.closest<HTMLElement>('[data-submenu]');
+                                                            const root = event.currentTarget.closest<HTMLElement>('[data-context-menu]');
+                                                            const panel = root?.querySelector<HTMLElement>('[data-menu-panel]');
+                                                            if (!submenu || !panel) return;
+                                                            const visible = [panel, submenu].filter(node => node.style.visibility !== 'hidden');
+                                                            const side = availableMenuSide(submenu.getBoundingClientRect(), 224 * (preferences.zoom || 1),
+                                                                visible.map(node => node.getBoundingClientRect()), window.innerWidth);
+                                                            setMoveTargetListId(side === null ? null : l.id);
+                                                        }}
+                                                        className={`w-full text-sm rounded-lg hover:bg-indigo-50 flex items-center justify-between transition-colors ${activeListId === l.id ? 'bg-gray-50' : ''}`}
+                                                    >
+                                                        <button type="button" onClick={() => {
                                                             if (contextMenu.taskId) handleMoveToList(contextMenu.taskId, l.id);
                                                             setMoveTargetListId(null);
-                                                        }}
-                                                        className={`w-full px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 flex items-center justify-between transition-colors ${activeListId === l.id ? 'bg-gray-50 opacity-60' : ''}`}
-                                                    >
-                                                        <div className="flex items-center gap-2">
+                                                        }} className="flex flex-1 min-w-0 items-center gap-2 px-3 py-2 text-right">
                                                             <div className="w-2.5 h-2.5 rounded-full bg-indigo-400"></div>
                                                             <span className="font-bold text-gray-700">{l.title}</span>
-                                                        </div>
-                                                        <Icons.ChevronLeft size={12} className="text-gray-300" />
-                                                    </button>
+                                                        </button>
+                                                        <button type="button" aria-label={`عرض مجموعات ${l.title}`} aria-expanded={moveTargetListId === l.id}
+                                                            onClick={() => setMoveTargetListId(l.id)} className="px-3 py-2 text-gray-400 hover:text-indigo-600">
+                                                            <Icons.ChevronLeft size={12} />
+                                                        </button>
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>

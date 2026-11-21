@@ -223,6 +223,59 @@ test('moving the last Google task preserves its local copy and deletes the remot
     assert.deepEqual(deletions, []);
 });
 
+test('actual move-to-list update queues deletion for the last Google task', () => {
+    const source = fs.readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    const start = source.indexOf('    const removeTaskRecursive =');
+    const end = source.indexOf('    const requestDeleteTask =', start);
+    assert.ok(start >= 0 && end > start);
+    const js = ts.transpileModule(source.slice(start, end), {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 }
+    }).outputText;
+    const listId = 'second-list';
+    const googleFolder = { ...folder([local({ listId: 'source' })]),
+        id: googleListFolderId(listId), googleListId: listId, isGoogleListFolder: true, listId: 'source' };
+    let current = [googleFolder];
+    let deletions = [];
+    const modifyTasks = update => {
+        const next = update(current);
+        const detached = detachGoogleTasksMovedOutside(current, next);
+        deletions = detached.deletions;
+        current = markGoogleChanges(current, detached.tasks, listId);
+    };
+    const findTask = (id, tasks) => flattenTasks(tasks).find(t => t.id === id);
+    const updateTask = new Function('modifyTasks', 'findTask', 'addTaskToFolderById',
+        `${js}\nreturn updateTask;`)(modifyTasks, findTask, () => { throw new Error('Unexpected folder move'); });
+    updateTask('local', { listId: 'destination', parentId: null });
+    assert.deepEqual(deletions, [{ taskId: 'remote', listId }]);
+    assert.equal(find(current).listId, 'destination');
+    assert.equal(find(current).googleTaskId, undefined);
+    assert.equal(find(current, googleFolder.id).children.length, 0);
+});
+
+test('a returning Google task cannot reuse a moved local task ID, including existing collisions', () => {
+    const listId = 'second-list';
+    const sharedId = `google_${listId}_remote`;
+    const moved = task({ id: sharedId, title: 'Moved copy', listId: 'destination', parentId: null });
+    const lists = [{ id: listId, title: 'Home' }];
+    const first = mergeGoogleTasks([moved], [remote()], 'source', lists);
+    let googleTask = flattenTasks(first).find(t => t.googleTaskId === 'remote');
+    assert.notEqual(googleTask.id, moved.id);
+    assert.equal(find(first, moved.id).listId, 'destination');
+    const again = mergeGoogleTasks(first, [remote()], 'source', lists);
+    assert.equal(flattenTasks(again).find(t => t.googleTaskId === 'remote').id, googleTask.id);
+
+    const collision = [moved, { ...folder([local({ id: sharedId })]),
+        id: googleListFolderId(listId), googleListId: listId, isGoogleListFolder: true }];
+    const repaired = mergeGoogleTasks(collision, [remote()], 'source', lists);
+    googleTask = flattenTasks(repaired).find(t => t.googleTaskId === 'remote');
+    assert.notEqual(googleTask.id, moved.id);
+    const relocated = repaired.map(t => t.id === googleListFolderId(listId) ? { ...t, children: [] } : t);
+    relocated.push({ ...googleTask, parentId: null, listId: 'destination' });
+    const detached = detachGoogleTasksMovedOutside(repaired, relocated);
+    assert.deepEqual(detached.deletions, [{ taskId: 'remote', listId }]);
+    assert.equal(flattenTasks(detached.tasks).filter(t => t.id === moved.id).length, 1);
+});
+
 // Execute the actual Electron handlers with a fake API (no account/network access).
 function handlers(api) {
     const source = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
