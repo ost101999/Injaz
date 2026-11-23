@@ -52,7 +52,7 @@ export function detachGoogleTasksMovedOutside(previous, next) {
 }
 
 export function acknowledgeGoogleWrite(tasks, sent, googleTaskId) {
-    return tasks.map(task => task.id === sent.id ? {
+    return tasks.map(task => task.id === sent.id && task.isGoogleSynced && task.googleListId === sent.googleListId ? {
         ...task, googleTaskId, googleListId: sent.googleListId,
         googleSyncPending: task.googleSyncRevision !== sent.googleSyncRevision ||
             task.title !== sent.title || task.isCompleted !== sent.isCompleted
@@ -213,6 +213,15 @@ export async function uploadGoogleChanges({ getTasks, apply, invoke, tokens, isC
             if (!ok) throw new Error('لم يؤكد جوجل حفظ التعديل');
         }
         if (!isCurrent()) return;
+        // The task can be moved out while its creation request is in flight.
+        // Its new remote ID was not available when the move queued deletions.
+        const current = flattenTasks(getTasks()).find(task => task.id === sent.id);
+        if (!sent.googleTaskId && (!current || !current.isGoogleSynced || current.googleListId !== sent.googleListId)) {
+            const deletion = { listId: sent.googleListId, taskId: id };
+            applyDeletions(items => items.some(item => remoteKey(item.listId, item.taskId) === remoteKey(deletion.listId, deletion.taskId))
+                ? items : [...items, deletion]);
+            continue;
+        }
         apply(tasks => acknowledgeGoogleWrite(tasks, sent, id));
     }
 }

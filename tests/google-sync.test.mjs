@@ -223,6 +223,57 @@ test('moving the last Google task preserves its local copy and deletes the remot
     assert.deepEqual(deletions, []);
 });
 
+test('moving the last task to a group in the same list while its Google creation is in flight', async () => {
+    const listId = 'second-list';
+    const googleGroup = { ...folder([]), id: googleListFolderId(listId), googleListId: listId, isGoogleListFolder: true, listId: 'default' };
+    const destination = task({ id: 'destination', type: 'folder', parentId: null, listId: 'default' });
+    let tasks = markGoogleChanges([], [{ ...googleGroup, children: [task({ listId: 'default', parentId: googleGroup.id })] }, destination], listId);
+    let deletions = [];
+    const options = { getTasks: () => tasks, apply: fn => { tasks = fn(tasks); },
+        getDeletions: () => deletions, applyDeletions: fn => { deletions = fn(deletions); }, tokens: {}, isCurrent: () => true };
+    await uploadGoogleChanges({ ...options, invoke: async name => {
+        assert.equal(name, 'google-tasks:create-task');
+        const moving = { ...find(tasks), parentId: destination.id };
+        const next = [{ ...googleGroup, children: [] }, { ...destination, children: [moving] }];
+        const detached = detachGoogleTasksMovedOutside(tasks, next);
+        tasks = markGoogleChanges(tasks, detached.tasks, listId);
+        deletions.push(...detached.deletions);
+        return 'new-remote';
+    } });
+    assert.equal(find(tasks).parentId, destination.id);
+    assert.equal(find(tasks).googleTaskId, undefined);
+    assert.deepEqual(deletions, [{ listId, taskId: 'new-remote' }]);
+    await uploadGoogleChanges({ ...options, invoke: async (name, data) => {
+        assert.equal(name, 'google-tasks:delete-task');
+        assert.equal(data.taskId, 'new-remote');
+        return true;
+    } });
+    tasks = mergeGoogleTasks(tasks, [], 'default', [{ id: listId, title: 'Home' }]);
+    assert.equal(find(tasks).parentId, destination.id);
+    assert.deepEqual(deletions, []);
+});
+
+test('an update response cannot reattach a task moved out during the request', async () => {
+    const original = local({ googleSyncPending: true, googleSyncRevision: 1, listId: 'default' });
+    const destination = task({ id: 'destination', type: 'folder', parentId: null, listId: 'default' });
+    let tasks = [folder([original]), destination];
+    let deletions = [];
+    await uploadGoogleChanges({ getTasks: () => tasks, apply: fn => { tasks = fn(tasks); },
+        getDeletions: () => deletions, applyDeletions: fn => { deletions = fn(deletions); }, tokens: {}, isCurrent: () => true,
+        invoke: async name => {
+            assert.equal(name, 'google-tasks:update-task');
+            const moved = { ...find(tasks), parentId: destination.id };
+            const detached = detachGoogleTasksMovedOutside(tasks, [folder([]), { ...destination, children: [moved] }]);
+            tasks = markGoogleChanges(tasks, detached.tasks, 'second-list');
+            deletions = detached.deletions;
+            return true;
+        }
+    });
+    assert.equal(find(tasks).parentId, destination.id);
+    assert.equal(find(tasks).googleTaskId, undefined);
+    assert.deepEqual(deletions, [{ listId: 'second-list', taskId: 'remote' }]);
+});
+
 test('actual move-to-list update queues deletion for the last Google task', () => {
     const source = fs.readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
     const start = source.indexOf('    const removeTaskRecursive =');
@@ -250,6 +301,35 @@ test('actual move-to-list update queues deletion for the last Google task', () =
     assert.equal(find(current).listId, 'destination');
     assert.equal(find(current).googleTaskId, undefined);
     assert.equal(find(current, googleFolder.id).children.length, 0);
+});
+
+test('actual move to a local group in the same list queues the last Google task for deletion', () => {
+    const source = fs.readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    const addStart = source.indexOf('    const addTaskToFolderById =');
+    const addEnd = source.indexOf('    const addTask =', addStart);
+    const updateStart = source.indexOf('    const removeTaskRecursive =');
+    const updateEnd = source.indexOf('    const requestDeleteTask =', updateStart);
+    assert.ok(addStart >= 0 && addEnd > addStart && updateStart >= 0 && updateEnd > updateStart);
+    const js = ts.transpileModule(source.slice(addStart, addEnd) + source.slice(updateStart, updateEnd), {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 }
+    }).outputText;
+    const listId = 'second-list';
+    const googleFolder = { ...folder([local({ listId: 'default' })]), id: googleListFolderId(listId),
+        googleListId: listId, isGoogleListFolder: true, listId: 'default' };
+    const destination = task({ id: 'destination', type: 'folder', parentId: null, listId: 'default' });
+    let tasks = [googleFolder, destination];
+    let deletions = [];
+    const modifyTasks = update => {
+        const detached = detachGoogleTasksMovedOutside(tasks, update(tasks));
+        deletions = detached.deletions;
+        tasks = markGoogleChanges(tasks, detached.tasks, listId);
+    };
+    const findTask = (id, list) => flattenTasks(list).find(t => t.id === id);
+    const updateTask = new Function('modifyTasks', 'findTask', `${js}\nreturn updateTask;`)(modifyTasks, findTask);
+    updateTask('local', { listId: 'default', parentId: destination.id });
+    assert.equal(find(tasks).parentId, destination.id);
+    assert.equal(find(tasks).googleTaskId, undefined);
+    assert.deepEqual(deletions, [{ taskId: 'remote', listId }]);
 });
 
 test('a returning Google task cannot reuse a moved local task ID, including existing collisions', () => {
