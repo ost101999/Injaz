@@ -4093,7 +4093,7 @@ export default function App() {
                 }
             });
             if (ungrouped.length > 0) {
-                cols.push('__ungrouped__');
+                cols.unshift('__ungrouped__');
             }
 
             // Toggle Expand/Collapse (W / ص)
@@ -5001,7 +5001,7 @@ export default function App() {
                             });
 
                             if (ungrouped.length > 0) {
-                                columns.push({ id: '__ungrouped__', title: 'غير معنون', tasks: getSortedList(ungrouped) });
+                                columns.unshift({ id: '__ungrouped__', title: 'غير معنون', tasks: getSortedList(ungrouped) });
                             }
 
                             if (columns.length === 0) {
