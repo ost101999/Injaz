@@ -26,15 +26,24 @@ function computeVersion() {
 }
 
 const fs = require('fs');
+const crypto = require('crypto');
 
-// Record the current project root so the installed app can locate its local build tool
+// Record the current project root and engine file hashes so the installed app can detect local edits.
 try {
-    const distElectronDir = path.resolve(__dirname, '..', 'dist-electron');
+    const rootDir = path.resolve(__dirname, '..');
+    const distElectronDir = path.join(rootDir, 'dist-electron');
     if (!fs.existsSync(distElectronDir)) {
         fs.mkdirSync(distElectronDir, { recursive: true });
     }
+    const engineHashes = {};
+    for (const rel of ['electron/main.ts', 'electron/dev-mode.ts']) {
+        const abs = path.join(rootDir, rel);
+        if (fs.existsSync(abs)) {
+            engineHashes[rel] = crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex');
+        }
+    }
     const metaFile = path.join(distElectronDir, 'project-meta.json');
-    fs.writeFileSync(metaFile, JSON.stringify({ projectRoot: path.resolve(__dirname, '..') }, null, 2), 'utf8');
+    fs.writeFileSync(metaFile, JSON.stringify({ projectRoot: rootDir, engineHashes }, null, 2), 'utf8');
 } catch {
     // Ignore meta writing errors
 }
