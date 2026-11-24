@@ -11,6 +11,7 @@ import { HabitsView } from './components/HabitsView';
 import { FirebaseSyncPanel, useFirebaseSync } from './components/FirebaseSync';
 import { detachGoogleTasksMovedOutside, flattenTasks, markGoogleChanges, mergeGoogleTasks, uploadGoogleChanges } from './google/sync.mjs';
 import { availableMenuSide } from './utils/contextMenu.mjs';
+import { hasNewSubtaskInProgress } from './utils/taskSort.mjs';
 
 // Simple ID generator
 function preserveTaskNotes(current: Task[], restored: Task[]) {
@@ -1651,17 +1652,8 @@ export default function App() {
                 const hasNoChildren = !t.children || t.children.length === 0;
                 if (hasNoChildren && !t.title.trim()) return false;
 
-                // Smart fix for "Tab" / new subtask workflow:
-                // 1. When a new subtask is created (e.g., via Tab), there is a 100ms delay before inlineEditingId is set.
-                //    We use a 1-second grace period (hasJustCreatedChild) to prevent it from flashing to the bottom.
-                // 2. Once inlineEditingId is active, we keep it at the top ONLY IF the child being edited is relatively new.
-                //    This ensures that clicking an OLD empty parent to edit it keeps it at the bottom, 
-                //    while typing a NEW Tab task keeps it at the top.
-                // 3. When you finish editing and it's empty, inlineEditingId clears and it drops immediately.
-                const editingChild = (t.children || []).find(c => c.id === inlineEditingId);
-                const isEditingNewChild = editingChild && (Date.now() - editingChild.createdAt < 60000);
-                const hasJustCreatedChild = (t.children || []).some(c => Date.now() - c.createdAt < 1000);
-                if (isEditingNewChild || hasJustCreatedChild) return false;
+                // A new subtask can be nested inside a group, so protect every ancestor.
+                if (hasNewSubtaskInProgress(t, inlineEditingId)) return false;
 
                 return getEffectiveTaskCount([t]) === 0;
             };
