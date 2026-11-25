@@ -39,6 +39,28 @@ function safeNotes(html: string) {
     return clean.innerHTML;
 }
 
+function loadNoteContent(element: HTMLElement, html: string) {
+    element.innerHTML = safeNotes(html);
+    return repairSavedNumbering(element);
+}
+
+export function MapNotePreview({ html, description }: { html?: string; description?: string }) {
+    const body = useRef<HTMLDivElement>(null);
+    const { size } = useNoteFontSize();
+    useLayoutEffect(() => {
+        if (body.current) loadNoteContent(body.current, html || '');
+    }, [html]);
+
+    return (
+        <section className="mindmap-note-card" aria-label="معلومات المهمة" dir="rtl"
+            style={{ fontSize: size }} onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}>
+            {description && <div className="note-content" dir="auto">{description}</div>}
+            <div className="note-content" ref={body} />
+            {!description && !html && <span>لا توجد ملاحظات</span>}
+        </section>
+    );
+}
+
 function preparePastedNotes(html: string, plainText: string) {
     const documentFragment = new DOMParser().parseFromString(html, 'text/html');
     const walker = documentFragment.createTreeWalker(documentFragment.body, NodeFilter.SHOW_TEXT);
@@ -142,8 +164,7 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
     const { size, handleSizeShortcut } = useNoteFontSize();
     useLayoutEffect(() => {
         const node = editor.current!;
-        node.innerHTML = safeNotes(initial);
-        if (repairSavedNumbering(node)) persist();
+        if (loadNoteContent(node, initial)) persist();
         node.focus();
         const selection = window.getSelection();
         selection?.selectAllChildren(node);
@@ -226,7 +247,7 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
                         }
                     }} />
             </header>
-            <div ref={editor} className="task-notes-editor" style={{ fontSize: size }} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
+            <div ref={editor} className="task-notes-editor note-content" style={{ fontSize: size }} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
                 onInput={event => {
                     const input = event.nativeEvent as InputEvent;
                     if (!input.isComposing && input.inputType !== 'historyUndo' && input.inputType !== 'historyRedo') {

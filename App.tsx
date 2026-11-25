@@ -4,7 +4,7 @@ import { Task, Priority, ViewMode, Breadcrumb, TaskList, Habit, GoogleTaskDeleti
 import { Icons } from './components/Icons';
 import { DevModeButton } from './components/DevModeButton';
 import { GoogleMark } from './components/GoogleMark';
-import { TaskNotes } from './components/TaskNotes';
+import { MapNotePreview, TaskNotes } from './components/TaskNotes';
 import { TaskModal } from './components/TaskModal';
 import { CalendarView } from './components/CalendarView';
 import { HabitsView } from './components/HabitsView';
@@ -141,36 +141,6 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
     }, [collapsedGroups, columns, noteId, expandedFolders]);
 
     return <svg ref={svgRef} className="saved-mindmap-lines" aria-hidden="true" />;
-}
-
-function MapNoteBranches({ task }: { task: Task }) {
-    const lines = React.useMemo(() => {
-        const text: string[] = [];
-        function visit(node: Node) {
-            if (node.nodeType === Node.TEXT_NODE) {
-                text.push(node.textContent || '');
-                return;
-            }
-            if (node instanceof Element && ['SCRIPT', 'STYLE', 'IFRAME'].includes(node.tagName)) return;
-            const block = /^(DIV|P|BR|HR|LI|UL|OL|H[1-6])$/.test(node.nodeName);
-            if (block) text.push('\n');
-            node.childNodes.forEach(visit);
-            if (block) text.push('\n');
-        }
-        const template = document.createElement('template');
-        template.innerHTML = task.notesHtml || '';
-        visit(template.content);
-        return [task.description, text.join('')].filter(Boolean).join('\n').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    }, [task.notesHtml, task.description]);
-
-    return (
-        <ul className="mindmap-note-card" aria-label="معلومات المهمة"
-            onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-            {(lines.length ? lines : ['لا توجد ملاحظات']).map((line, index) => (
-                <li key={index} dir="auto">{line}</li>
-            ))}
-        </ul>
-    );
 }
 
 function WidgetArchiveEntry({ task, onOpenNotes }: { task: Task; onOpenNotes: (id: string) => void }) {
@@ -5774,7 +5744,7 @@ export default function App() {
                                             </div>
                                         </div>
                                     </div>
-                                    {selected && <MapNoteBranches key={selected.id} task={selected} />}
+                                    {selected && <MapNotePreview key={selected.id} html={selected.notesHtml} description={selected.description} />}
                                 </div>
                                 </div>
                             ); })}</div>;

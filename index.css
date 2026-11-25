@@ -163,14 +163,14 @@
     grid-row: 1;
     border: 1px solid #dedbee;
     border-radius: 14px;
-    background: #faf9ff;
-    color: #45415b;
-    font-size: .86rem;
+    background: #fff9e9;
+    color: #25283b;
+    font-family: Amiri, serif;
     line-height: 1.65;
     user-select: text;
     text-align: start;
 }
-.mindmap-note-card li { width: max-content; min-width: 100%; white-space: nowrap; unicode-bidi: plaintext; }
+.mindmap-note-card .note-content { white-space: pre; min-width: 100%; width: max-content; }
 .saved-mindmap-right .mindmap-note-card { grid-column: 3; }
 .saved-mindmap-left .mindmap-note-card { grid-column: 1; }
 @container (width > 700px) {

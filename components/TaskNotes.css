@@ -16,13 +16,13 @@
     flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px; outline: none;
     font-size: 20px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap;
 }
-.task-notes-editor, .task-notes-editor :is(div, p, li) { unicode-bidi: plaintext; text-align: start; }
-.task-notes-editor span[style*="opacity: 0.5"][style*="font-weight: bold"] { font-size: 0.85em; }
-.task-notes-editor [data-empty-rtl-number]::before { content: "\200f"; }
-.task-notes-editor ol { list-style: decimal; }
-.task-notes-editor ul { list-style: disc; }
-.task-notes-editor hr { border: 0; border-top: 1px solid rgba(100, 116, 139, 0.2); margin: 0.6em 0; }
-.task-notes-editor ol, .task-notes-editor ul { padding-inline-start: 1.5em; }
+.note-content, .note-content :is(div, p, li) { unicode-bidi: plaintext; text-align: start; }
+.note-content span[style*="opacity: 0.5"][style*="font-weight: bold"] { font-size: 0.85em; }
+.note-content [data-empty-rtl-number]::before { content: "\200f"; }
+.note-content ol { list-style: decimal; }
+.note-content ul { list-style: disc; }
+.note-content hr { border: 0; border-top: 1px solid rgba(100, 116, 139, 0.2); margin: 0.6em 0; }
+.note-content ol, .note-content ul { padding-inline-start: 1.5em; }
 .task-notes footer { padding: 10px 16px; color: #a52135; }
 .task-notes footer button { padding: 3px 7px; border-radius: 8px; cursor: pointer; }
 .task-notes footer button:hover { background: #eeedf9; }
