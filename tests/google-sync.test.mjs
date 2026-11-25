@@ -395,4 +395,8 @@ test('Electron distinguishes expired authorization from connection errors', asyn
     await assert.rejects(auth['google-tasks:fetch-lists'](null, {}), /GOOGLE_AUTH_REQUIRED/);
     const offline = handlers({ tasklists: { list: async () => { throw new Error('offline'); } } });
     await assert.rejects(offline['google-tasks:fetch-lists'](null, {}), /GOOGLE_SYNC_UNAVAILABLE/);
+    const unconfigured = handlers({ tasklists: { list: async () => { throw new Error('GOOGLE_CLIENT_NOT_CONFIGURED'); } } });
+    await assert.rejects(unconfigured['google-tasks:fetch-lists'](null, {}), /GOOGLE_AUTH_REQUIRED/);
+    const invalidClient = handlers({ tasklists: { list: async () => { throw { response: { status: 400, data: { error: 'invalid_client' } } }; } } });
+    await assert.rejects(invalidClient['google-tasks:fetch-lists'](null, {}), /GOOGLE_AUTH_REQUIRED/);
 });

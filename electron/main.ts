@@ -336,27 +336,40 @@ const getAssetPath = (...paths: string[]): string => {
 };
 
 // --- GOOGLE TASKS CONFIG ---
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_PORT = 4007; // Changed to avoid conflicts
 const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${GOOGLE_REDIRECT_PORT}`;
 
-const oauth2Client = new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URI
-);
+const personalGoogleClientPath = () => path.join(app.getPath('appData'), 'InjazGoogleAuth', 'client.json');
 
-// Personal credentials are stored outside the app bundle and source repository.
-function personalGoogleClient() {
-    const filename = path.join(app.getPath('appData'), 'InjazGoogleAuth', 'client.json');
-    const data = JSON.parse(fs.readFileSync(filename, 'utf8')).installed;
-    if (!data?.client_id || !data?.client_secret) throw new Error('Personal Google credentials are invalid');
-    return new google.auth.OAuth2(data.client_id, data.client_secret, GOOGLE_REDIRECT_URI);
+function readGoogleClientCredentials(): { clientId: string; clientSecret: string } | null {
+    const filename = personalGoogleClientPath();
+    if (fs.existsSync(filename)) {
+        const parsed = JSON.parse(fs.readFileSync(filename, 'utf8'));
+        const data = parsed?.installed || parsed?.web || parsed;
+        if (!data?.client_id || !data?.client_secret) {
+            throw new Error('Personal Google credentials are invalid');
+        }
+        return { clientId: data.client_id, clientSecret: data.client_secret };
+    }
+    const envId = process.env.INJAZ_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+    const envSecret = process.env.INJAZ_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
+    if (envId && envSecret) {
+        return { clientId: envId, clientSecret: envSecret };
+    }
+    return null;
 }
 
-function googleClientForTokens(tokens: any) {
-    return tokens?.injaz_personal_client ? personalGoogleClient() : oauth2Client;
+// Credentials are stored outside the app bundle and source repository.
+function createGoogleOAuthClient() {
+    const credentials = readGoogleClientCredentials();
+    if (!credentials) {
+        throw new Error('GOOGLE_CLIENT_NOT_CONFIGURED');
+    }
+    return new google.auth.OAuth2(credentials.clientId, credentials.clientSecret, GOOGLE_REDIRECT_URI);
+}
+
+function googleClientForTokens(_tokens: any) {
+    return createGoogleOAuthClient();
 }
 
 // Scopes for Google Tasks
@@ -1428,9 +1441,29 @@ if (!gotTheLock) {
     // --- GOOGLE TASKS IPC HANDLERS ---
 
     ipcMain.handle('google-tasks:auth', async () => {
-        const personalPath = path.join(app.getPath('appData'), 'InjazGoogleAuth', 'client.json');
-        const usingPersonalClient = fs.existsSync(personalPath);
-        const authClient = usingPersonalClient ? personalGoogleClient() : oauth2Client;
+        if (!readGoogleClientCredentials()) {
+            const dialogOptions: Electron.OpenDialogOptions = {
+                title: 'اختر ملف بيانات اعتماد Google OAuth (client.json)',
+                properties: ['openFile'],
+                filters: [{ name: 'JSON Files', extensions: ['json'] }]
+            };
+            const picked = mainWindow && !mainWindow.isDestroyed()
+                ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+                : await dialog.showOpenDialog(dialogOptions);
+            if (picked.canceled || picked.filePaths.length === 0) {
+                throw new Error('لم يتم تحديد ملف بيانات اعتماد Google OAuth (client.json).');
+            }
+            const parsed = JSON.parse(fs.readFileSync(picked.filePaths[0], 'utf8'));
+            const data = parsed?.installed || parsed?.web || parsed;
+            if (!data?.client_id || !data?.client_secret) {
+                throw new Error('ملف JSON المختار لا يحتوي على بيانات اعتماد Google OAuth صالحة.');
+            }
+            const targetPath = personalGoogleClientPath();
+            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+            fs.copyFileSync(picked.filePaths[0], targetPath);
+        }
+        const usingPersonalClient = fs.existsSync(personalGoogleClientPath());
+        const authClient = createGoogleOAuthClient();
         return new Promise((resolve, reject) => {
             const authUrl = authClient.generateAuthUrl({
                 access_type: 'offline',
@@ -1514,7 +1547,14 @@ if (!gotTheLock) {
     function googleTasksError(error: any): Error {
         const status = Number(error?.response?.status || error?.status || error?.code);
         const reason = String(error?.response?.data?.error || error?.message || '').toLowerCase();
-        if (status === 401 || reason.includes('invalid_grant') || reason.includes('invalid_credentials')) return new Error('GOOGLE_AUTH_REQUIRED');
+        if (
+            status === 401 ||
+            reason.includes('invalid_grant') ||
+            reason.includes('invalid_credentials') ||
+            reason.includes('invalid_client') ||
+            reason.includes('unauthorized_client') ||
+            reason.includes('google_client_not_configured')
+        ) return new Error('GOOGLE_AUTH_REQUIRED');
         if (status === 403) return new Error('GOOGLE_ACCESS_DENIED');
         if (status === 404) return new Error('GOOGLE_NOT_FOUND');
         return new Error('GOOGLE_SYNC_UNAVAILABLE');
