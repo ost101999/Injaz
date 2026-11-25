@@ -244,9 +244,14 @@
 }
 [data-ordering][data-selected] > [role="button"] .text-red-500 { color: #554776; }
 @media (prefers-reduced-motion: no-preference) {
-    .widget-order-archived { animation: widget-order-appear 360ms ease-out both; }
+    .widget-order-archived { animation: widget-order-appear 900ms ease-out both; }
+    .widget-order-archived > [role="button"] { animation: widget-order-rise 900ms cubic-bezier(.22,.8,.25,1) both; }
     @keyframes widget-order-appear {
         from { opacity: 0; }
         to { opacity: 1; }
+    }
+    @keyframes widget-order-rise {
+        from { transform: translateY(8px) scale(.98); }
+        to { transform: translateY(0) scale(1); }
     }
 }

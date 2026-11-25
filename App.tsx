@@ -151,10 +151,12 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
         }
         window.addEventListener('resize', draw);
         window.addEventListener('scroll', draw, true);
+        window.addEventListener('mindmap-order-motion', draw);
         return () => {
             observer.disconnect();
             window.removeEventListener('resize', draw);
             window.removeEventListener('scroll', draw, true);
+            window.removeEventListener('mindmap-order-motion', draw);
         };
     }, [collapsedGroups, columns, noteId, expandedFolders]);
 
@@ -1932,7 +1934,7 @@ export default function App() {
         const ungrouped: Task[] = [];
 
         const displayedTasks = reorderingGroups
-            ? getSortedList(currentTasks.filter(task => !task.isCompleted || task.id === recentlyCompletedId || (task.type === 'folder' && task.isArchived)))
+            ? currentTasks.filter(task => task.type === 'folder' || !task.isCompleted || task.id === recentlyCompletedId)
             : sortedActiveTasks;
         for (const task of displayedTasks) {
             if (task.isArchived && (!reorderingGroups || task.type !== 'folder')) continue;
@@ -1944,7 +1946,7 @@ export default function App() {
             const children = (task.children || []).filter(child => !child.isCompleted && !child.isArchived);
             const count = getEffectiveTaskCount(children);
             const hasEditor = task.id === inlineEditingId || hasNewSubtaskInProgress(task, inlineEditingId);
-            if (task.isArchived || count > 0 || hasEditor || task.id === folderActionPromptId) {
+            if (reorderingGroups || task.isArchived || count > 0 || hasEditor || task.id === folderActionPromptId) {
                 columns.push({ id: task.id, title: task.title, tasks: getSortedList(children), count, archived: task.isArchived });
             }
         }
@@ -1966,6 +1968,49 @@ export default function App() {
         }
         return columns;
     }, [currentTasks, sortedActiveTasks, getEffectiveTaskCount, getSortedList, inlineEditingId, folderActionPromptId, ungroupedId, recentlyCompletedId, reorderingGroups, groupOrderByList, groupOrderKey]);
+
+    const previousGroupPositions = useRef(new Map<string, { x: number; y: number }>());
+    useLayoutEffect(() => {
+        const container = groupsContainerRef.current;
+        if (!container || activeTab !== 'tasks' || viewMode !== 'groups') {
+            previousGroupPositions.current.clear();
+            return;
+        }
+        const nextPositions = new Map<string, { x: number; y: number }>();
+        const animations: Animation[] = [];
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const containerBox = container.getBoundingClientRect();
+        const zoom = containerBox.width / container.offsetWidth || 1;
+        container.querySelectorAll<HTMLElement>('[id^="widget-col-"]').forEach(card => {
+            const element = isMindMap ? card.closest<HTMLElement>('.saved-mindmap-branch') || card : card;
+            const box = element.getBoundingClientRect();
+            const position = {
+                x: (box.left - containerBox.left) / zoom + container.scrollLeft,
+                y: (box.top - containerBox.top) / zoom + container.scrollTop,
+            };
+            nextPositions.set(card.id, position);
+            const previous = previousGroupPositions.current.get(card.id);
+            if (!reorderingGroups || !previous || reduceMotion) return;
+            const x = previous.x - position.x;
+            const y = previous.y - position.y;
+            if (Math.abs(x) < 1 && Math.abs(y) < 1) return;
+            animations.push(element.animate(
+                [{ transform: `translate(${x}px, ${y}px)` }, { transform: 'translate(0, 0)' }],
+                { duration: 750, easing: 'cubic-bezier(.22,.8,.25,1)' }
+            ));
+        });
+        previousGroupPositions.current = nextPositions;
+        let frame = 0;
+        const redraw = () => {
+            window.dispatchEvent(new Event('mindmap-order-motion'));
+            if (animations.some(animation => animation.playState === 'running')) frame = requestAnimationFrame(redraw);
+        };
+        if (isMindMap && animations.length) frame = requestAnimationFrame(redraw);
+        return () => {
+            cancelAnimationFrame(frame);
+            animations.forEach(animation => animation.cancel());
+        };
+    }, [widgetColumns, reorderingGroups, isMindMap, activeTab, viewMode]);
 
     const archivedWidgetTasks = React.useMemo(() => {
         const archived: Task[] = [];
@@ -4375,6 +4420,10 @@ export default function App() {
         return () => timeoutIds.forEach(clearTimeout);
     }, [tasks, activeListId, inlineEditingId, getEffectiveTaskCount]);
 
+    const groupOrderScrollFrame = useRef(0);
+    useEffect(() => () => cancelAnimationFrame(groupOrderScrollFrame.current),
+        [activeListId, currentFolderId, isMindMap, activeTab, viewMode]);
+
     // Alt + arrows enter group ordering and move the selected group.
     useEffect(() => {
         const handleGroupOrdering = (event: KeyboardEvent) => {
@@ -4387,6 +4436,7 @@ export default function App() {
             if (event.key === 'Escape' && reorderingGroups) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
+                cancelAnimationFrame(groupOrderScrollFrame.current);
                 setReorderingGroups(false);
                 setReorderingGroupId(null);
                 return;
@@ -4399,11 +4449,9 @@ export default function App() {
             event.preventDefault();
             event.stopImmediatePropagation();
 
-            const allFolders = getSortedList(currentTasks.filter(task => task.type === 'folder'));
+            const allFolders = currentTasks.filter(task => task.type === 'folder');
             const visibleIds = new Set(widgetColumns.map(column => column.id));
-            const candidateIds = allFolders
-                .filter(folder => folder.isArchived || visibleIds.has(folder.id))
-                .map(folder => folder.id);
+            const candidateIds = allFolders.map(folder => folder.id);
             if (visibleIds.has(ungroupedId)) candidateIds.unshift(ungroupedId);
             const saved = groupOrderByList[groupOrderKey];
             const allIds = allFolders.map(folder => folder.id);
@@ -4421,11 +4469,43 @@ export default function App() {
             if (!candidates.length) return;
 
             const focused = target?.closest<HTMLElement>('[id^="widget-col-"]')?.id.slice('widget-col-'.length);
-            const selected = [reorderingGroupId, focused, lastActiveGroupColRef.current,
-                ...widgetColumns.filter(column => !collapsedGroupIds.has(column.id)).map(column => column.id)]
+            const openGroups = widgetColumns.filter(column => !column.archived && !collapsedGroupIds.has(column.id));
+            const lastOpen = openGroups.find(column => column.id === lastActiveGroupColRef.current)?.id;
+            const selected = [reorderingGroupId, lastOpen, ...openGroups.map(column => column.id), focused]
                 .find(id => id && candidates.includes(id)) || candidates[0];
             setReorderingGroups(true);
             setReorderingGroupId(selected);
+            cancelAnimationFrame(groupOrderScrollFrame.current);
+            groupOrderScrollFrame.current = requestAnimationFrame(() => {
+                const container = groupsContainerRef.current;
+                const card = document.getElementById(`widget-col-${selected}`);
+                if (!container || !card) return;
+                const moving = isMindMap ? card.closest<HTMLElement>('.saved-mindmap-branch') || card : card;
+                const bounds = container.getBoundingClientRect();
+                const cardBounds = card.getBoundingClientRect();
+                const zoom = bounds.width / container.offsetWidth || 1;
+                const transform = getComputedStyle(moving).transform;
+                const offset = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41 * zoom;
+                const left = cardBounds.left - offset;
+                const right = cardBounds.right - offset;
+                const margin = 12 * zoom;
+                const delta = left < bounds.left + margin
+                    ? left - bounds.left - margin
+                    : right > bounds.right - margin ? right - bounds.right + margin : 0;
+                if (!delta) return;
+                const start = container.scrollLeft;
+                const distance = delta / zoom;
+                const startTime = performance.now();
+                const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800;
+                const scroll = (now: number) => {
+                    const progress = duration ? Math.min(1, (now - startTime) / duration) : 1;
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    container.scrollLeft = start + distance * eased;
+                    if (progress < 1) groupOrderScrollFrame.current = requestAnimationFrame(scroll);
+                };
+                groupOrderScrollFrame.current = requestAnimationFrame(scroll);
+            });
+            if (!reorderingGroups) return;
             const position = candidates.indexOf(selected);
             const neighbor = candidates[position + direction];
             if (neighbor) {
@@ -4456,9 +4536,6 @@ export default function App() {
                     setSortBy('custom');
                 }
             }
-            requestAnimationFrame(() => {
-                document.getElementById(`widget-col-${selected}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-            });
         };
         window.addEventListener('keydown', handleGroupOrdering, true);
         return () => window.removeEventListener('keydown', handleGroupOrdering, true);
@@ -5443,7 +5520,7 @@ export default function App() {
                                     data-ordering={reorderingGroups || undefined}
                                     data-selected={reorderingGroups && reorderingGroupId === col.id || undefined}
                                     id={`widget-col-${col.id}`}
-                                    className={`${isMindMap ? 'saved-mindmap-card' : 'flex-shrink-0 w-80 transition-all duration-500 ease-in-out'} bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-2xl overflow-hidden ${col.archived ? 'widget-order-archived' : ''} ${!reorderingGroups && !isMindMap && preferences.focusBlur !== false && columns.some(c => !collapsedGroupIds.has(c.id) && c.id !== col.id) && collapsedGroupIds.has(col.id) ? 'blur-[1px] opacity-40 brightness-75 hover:blur-0 hover:opacity-100 hover:brightness-100' : ''}`}
+                                    className={`${isMindMap ? 'saved-mindmap-card' : 'flex-shrink-0 w-80 transition-all duration-500 ease-in-out'} bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-2xl overflow-hidden ${col.archived || (reorderingGroups && col.count === 0 && col.id !== ungroupedId) ? 'widget-order-archived' : ''} ${!reorderingGroups && !isMindMap && preferences.focusBlur !== false && columns.some(c => !collapsedGroupIds.has(c.id) && c.id !== col.id) && collapsedGroupIds.has(col.id) ? 'blur-[1px] opacity-40 brightness-75 hover:blur-0 hover:opacity-100 hover:brightness-100' : ''}`}
                                 >
                                     {/* Column Header - click to collapse/expand */}
                                     <div
