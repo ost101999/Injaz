@@ -50,7 +50,7 @@ const ungroupedColumnId = (listId: string) => '__ungrouped__:' + listId;
 
 type WidgetColumn = { id: string; title: string; tasks: Task[]; count: number };
 
-function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set<string>; columns: WidgetColumn[] }) {
+function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders }: { collapsedGroups: Set<string>; columns: WidgetColumn[]; noteId: string | null; expandedFolders: Set<string> }) {
     const svgRef = useRef<SVGSVGElement>(null);
 
     useLayoutEffect(() => {
@@ -65,6 +65,8 @@ function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set
             return [{
                 id: heading.parentElement!.id,
                 side: branch.classList.contains('saved-mindmap-right') ? 1 : -1,
+                note: branch.querySelector<HTMLElement>('.mindmap-note-card'),
+                source: noteId ? branch.querySelector<HTMLElement>('[data-notes-task=' + CSS.escape(noteId) + ']') : null,
                 heading,
                 panel: branch.querySelector<HTMLElement>('.saved-mindmap-items')!,
                 items: Array.from(branch.querySelectorAll<HTMLElement>('[data-mindmap-item]')),
@@ -100,7 +102,12 @@ function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set
 
             }
 
-            for (const { id, side, heading, panel, items } of branches) {
+            for (const { id, side, heading, panel, items, note, source } of branches) {
+                if (note && source) {
+                    const key = 'note/' + noteId;
+                    connect(key, source.getBoundingClientRect(), note.getBoundingClientRect(), side, true);
+                    svg.querySelector('path[data-edge="' + CSS.escape(key) + '"]')?.classList.add('mindmap-note-line');
+                }
                 const headingBox = heading.getBoundingClientRect();
                 connect(id, rootBox, headingBox, side);
                 const visible = panel.getBoundingClientRect();
@@ -119,9 +126,11 @@ function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set
         const observer = new ResizeObserver(draw);
         observer.observe(map);
         observer.observe(root);
-        for (const { heading, panel, items } of branches) {
+        for (const { heading, panel, items, note, source } of branches) {
             observer.observe(heading);
             observer.observe(panel);
+            if (note) observer.observe(note);
+            if (source) observer.observe(source);
             items.forEach(item => observer.observe(item));
         }
         window.addEventListener('resize', draw);
@@ -129,9 +138,39 @@ function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set
             observer.disconnect();
             window.removeEventListener('resize', draw);
         };
-    }, [collapsedGroups, columns]);
+    }, [collapsedGroups, columns, noteId, expandedFolders]);
 
     return <svg ref={svgRef} className="saved-mindmap-lines" aria-hidden="true" />;
+}
+
+function MapNoteBranches({ task }: { task: Task }) {
+    const lines = React.useMemo(() => {
+        const text: string[] = [];
+        function visit(node: Node) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                text.push(node.textContent || '');
+                return;
+            }
+            if (node instanceof Element && ['SCRIPT', 'STYLE', 'IFRAME'].includes(node.tagName)) return;
+            const block = /^(DIV|P|BR|HR|LI|UL|OL|H[1-6])$/.test(node.nodeName);
+            if (block) text.push('\n');
+            node.childNodes.forEach(visit);
+            if (block) text.push('\n');
+        }
+        const template = document.createElement('template');
+        template.innerHTML = task.notesHtml || '';
+        visit(template.content);
+        return [task.description, text.join('')].filter(Boolean).join('\n').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    }, [task.notesHtml, task.description]);
+
+    return (
+        <ul className="mindmap-note-card" aria-label="معلومات المهمة"
+            onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+            {(lines.length ? lines : ['لا توجد ملاحظات']).map((line, index) => (
+                <li key={index} dir="auto">{line}</li>
+            ))}
+        </ul>
+    );
 }
 
 function WidgetArchiveEntry({ task, onOpenNotes }: { task: Task; onOpenNotes: (id: string) => void }) {
@@ -1146,16 +1185,6 @@ export default function App() {
     const [activeTab, setActiveTab] = useState<'tasks' | 'calendar' | 'habits'>('tasks');
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
 
-    useEffect(() => {
-        const ipc = (window as any).require?.('electron')?.ipcRenderer;
-        if (!ipc) return;
-        if (activeTab === 'habits') {
-            ipc.send('maximize-window');
-        } else {
-            ipc.send('unmaximize-window');
-        }
-    }, [activeTab]);
-
     const getEffectiveTaskCount = useCallback((taskList: Task[]): number => {
         let count = 0;
         taskList.forEach(t => {
@@ -1446,6 +1475,22 @@ export default function App() {
 
     const activeList = lists.find(l => l.id === activeListId) || lists[0];
     const isMindMap = mindMapByList[activeListId] ?? /^(?:\u0627\u0644)?\u0645\u062d\u0641\u0648\u0638\u0627\u062a$/.test((activeList?.title || '').replace(/[\u064B-\u065F\u0670\s]/g, ''));
+    const inTaskMap = activeTab === 'tasks' && viewMode === 'groups' && isMindMap;
+    const expandWindow = inTaskMap || activeTab === 'habits';
+    useEffect(() => {
+        (window as any).require?.('electron')?.ipcRenderer?.send('set-expanded-view', expandWindow);
+    }, [expandWindow]);
+
+    const [mapNoteId, setMapNoteId] = useState<string | null>(null);
+    useEffect(() => {
+        setMapNoteId(null);
+        if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+    }, [activeListId, inTaskMap, currentFolderId]);
+    function toggleMapNote(id: string) {
+        if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+        mindMapClickTimer.current = setTimeout(() => setMapNoteId(previous => previous === id ? null : id), 250);
+    }
+
     const currentFolder = currentFolderId ? findTask(currentFolderId, tasks) : null;
     const currentTasks = React.useMemo(() => {
         if (currentFolderId) {
@@ -5190,9 +5235,16 @@ export default function App() {
 
                             const rows = Math.ceil(columns.length / 2);
                             return <div className={isMindMap ? 'saved-mindmap' : 'contents'}>
-                                {isMindMap && <MindMapConnections collapsedGroups={collapsedGroupIds} columns={widgetColumns} />}
+                                {isMindMap && <MindMapConnections collapsedGroups={collapsedGroupIds} columns={widgetColumns} noteId={mapNoteId} expandedFolders={expandedFolderIds} />}
                                 {isMindMap && <div className="saved-mindmap-root" style={{ gridRow: `1 / span ${rows}` }}>{activeList.title}</div>}
-                                {columns.map((col, index) => (
+                                {columns.map((col, index) => {
+                                    const selected = isMindMap && mapNoteId && !collapsedGroupIds.has(col.id)
+                                        ? col.tasks.find(task => task.id === mapNoteId) || col.tasks
+                                            .filter(task => expandedFolderIds.has(task.id))
+                                            .flatMap(task => task.children || [])
+                                            .find(child => child.id === mapNoteId && !child.isCompleted)
+                                        : null;
+                                    return (
                                 <div key={col.id} className={isMindMap ? `saved-mindmap-branch ${index % 2 === 0 ? 'saved-mindmap-right' : 'saved-mindmap-left'}` : 'contents'} style={isMindMap ? { gridColumn: index % 2 === 0 ? 3 : 1, gridRow: Math.floor(index / 2) + 1 } : undefined}>
                                 <div
                                     key={col.id}
@@ -5369,6 +5421,7 @@ export default function App() {
                                                             && inlineEditingId !== task.id
                                                             && !isEditingChild;
                                                         return (
+                                                            <React.Fragment key={task.id}>
                                                             <div
                                                                 key={task.id}
                                                                 data-mindmap-item={isMindMap ? '' : undefined}
@@ -5441,7 +5494,7 @@ export default function App() {
                                                                     if (isMindMap && task.type === 'item' && inlineEditingId !== task.id) {
                                                                         e.stopPropagation();
                                                                         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
-                                                                        mindMapClickTimer.current = setTimeout(() => openTaskNotes(task.id), 250);
+                                                                        toggleMapNote(task.id);
                                                                         return;
                                                                     }
                                                                     const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
@@ -5626,11 +5679,21 @@ export default function App() {
                                                                                     <div className="absolute top-[10px] bottom-[10px] right-[-2px] border-r-2 border-indigo-100" />
                                                                                     <div className="absolute bottom-0 right-[-2px] w-[10px] h-[10px] border-r-2 border-b-2 border-indigo-100 rounded-br-md" />
                                                                                     {task.children.filter((c: Task) => !c.isCompleted).map((child: Task) => (
+                                                                                        <React.Fragment key={child.id}>
                                                                                         <div
                                                                                             key={child.id}
                                                                                             data-notes-task={child.type === "item" ? child.id : undefined}
                                                                                             className={`flex items-start gap-2 py-1.5 min-w-0 cursor-pointer hover:opacity-70 transition-all ${completingTaskId === child.id ? 'animate-premium-complete' : ''}`}
-                                                                                            onClick={e => handleStartInlineEdit(e, child)}
+                                                                                            onClick={e => {
+                                                                                                e.stopPropagation();
+                                                                                                if (isMindMap && child.type === 'item') toggleMapNote(child.id);
+                                                                                                else handleStartInlineEdit(e, child);
+                                                                                            }}
+                                                                                            onDoubleClick={e => {
+                                                                                                e.stopPropagation();
+                                                                                                if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+                                                                                                handleStartInlineEdit(e, child);
+                                                                                            }}
                                                                                             onContextMenu={e => {
                                                                                                 e.preventDefault();
                                                                                                 setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: child.id, source: 'context' });
@@ -5694,6 +5757,8 @@ export default function App() {
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
+
+                                                                                        </React.Fragment>
                                                                                     ))}
                                                                                 </div>
                                                                             </div>
@@ -5701,15 +5766,18 @@ export default function App() {
                                                                     )}
                                                                 </div>
                                                             </div>
+
+                                                            </React.Fragment>
                                                         );
                                                     })
                                                 )}
                                             </div>
                                         </div>
                                     </div>
+                                    {selected && <MapNoteBranches key={selected.id} task={selected} />}
                                 </div>
                                 </div>
-                            ))}</div>;
+                            ); })}</div>;
 
                         })()}
                     </div>

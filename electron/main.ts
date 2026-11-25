@@ -827,15 +827,20 @@ if (!gotTheLock) {
         }
     });
 
-    ipcMain.on('maximize-window', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.maximize();
-        }
-    });
-
-    ipcMain.on('unmaximize-window', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.unmaximize();
+    const expandedViews = new WeakMap<BrowserWindow, boolean>();
+    ipcMain.on('set-expanded-view', (event, expand: boolean) => {
+        const win = mainWindow;
+        if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+        if (expand) {
+            if (expandedViews.has(win)) return;
+            expandedViews.set(win, win.isMaximized());
+            if (!win.isMaximized() && !win.isFullScreen()) win.maximize();
+        } else if (expandedViews.has(win)) {
+            const wasMaximized = expandedViews.get(win);
+            expandedViews.delete(win);
+            if (win.isFullScreen()) return;
+            if (wasMaximized && !win.isMaximized()) win.maximize();
+            if (!wasMaximized && win.isMaximized()) win.unmaximize();
         }
     });
 
