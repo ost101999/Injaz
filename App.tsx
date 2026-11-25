@@ -46,7 +46,126 @@ interface AppPreferences {
     completionAnimation?: boolean;
 }
 
+const ungroupedColumnId = (listId: string) => '__ungrouped__:' + listId;
+
+type WidgetColumn = { id: string; title: string; tasks: Task[]; count: number };
+
+function MindMapConnections({ collapsedGroups, columns }: { collapsedGroups: Set<string>; columns: WidgetColumn[] }) {
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    useLayoutEffect(() => {
+        const svg = svgRef.current;
+        const map = svg?.parentElement;
+        const root = map?.querySelector<HTMLElement>('.saved-mindmap-root');
+        if (!svg || !map || !root) return;
+
+        const branches = Array.from(map.querySelectorAll<HTMLElement>('.saved-mindmap-branch')).flatMap(branch => {
+            const heading = branch.querySelector<HTMLElement>('.saved-mindmap-heading');
+            if (!heading) return [];
+            return [{
+                id: heading.parentElement!.id,
+                side: branch.classList.contains('saved-mindmap-right') ? 1 : -1,
+                heading,
+                panel: branch.querySelector<HTMLElement>('.saved-mindmap-items')!,
+                items: Array.from(branch.querySelectorAll<HTMLElement>('[data-mindmap-item]')),
+            }];
+        });
+
+        const draw = () => {
+            const bounds = svg.getBoundingClientRect();
+            if (!bounds.width || !bounds.height) return;
+            svg.setAttribute('viewBox', ['0', '0', bounds.width, bounds.height].join(' '));
+            const rootBox = root.getBoundingClientRect();
+            const remaining = new Map(Array.from(svg.querySelectorAll('path'), path => [path.dataset.edge!, path]));
+
+            function connect(key: string, from: DOMRect, to: DOMRect, side: number, leaf = false) {
+                // Extend under the card borders to avoid gaps at fractional zoom.
+                const x1 = (side === 1 ? from.right : from.left) - bounds.left - side;
+                const x2 = (side === 1 ? to.left : to.right) - bounds.left + side;
+                const y1 = from.top + from.height / 2 - bounds.top;
+                const y2 = to.top + to.height / 2 - bounds.top;
+                const middle = (x1 + x2) / 2;
+                let path = remaining.get(key);
+                if (!path) {
+                    path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.dataset.edge = key;
+                    if (leaf) {
+                        path.setAttribute('pathLength', '1');
+                        path.classList.add('mindmap-leaf-line');
+                    }
+                    svg!.append(path);
+                }
+                remaining.delete(key);
+                path.setAttribute('d', ['M', x1, y1, 'C', middle, y1, middle, y2, x2, y2].join(' '));
+
+            }
+
+            for (const { id, side, heading, panel, items } of branches) {
+                const headingBox = heading.getBoundingClientRect();
+                connect(id, rootBox, headingBox, side);
+                const visible = panel.getBoundingClientRect();
+                for (const item of items) {
+                    const itemBox = item.getBoundingClientRect();
+                    const center = itemBox.top + itemBox.height / 2;
+                    if (center >= visible.top && center <= visible.bottom && itemBox.height > 0) connect(id + '/' + item.dataset.notesTask, headingBox, itemBox, side, true);
+                }
+            }
+
+            remaining.forEach(path => path.remove());
+        };
+
+        // Draw after React lays out the open branch and before that frame is painted.
+        draw();
+        const observer = new ResizeObserver(draw);
+        observer.observe(map);
+        observer.observe(root);
+        for (const { heading, panel, items } of branches) {
+            observer.observe(heading);
+            observer.observe(panel);
+            items.forEach(item => observer.observe(item));
+        }
+        window.addEventListener('resize', draw);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', draw);
+        };
+    }, [collapsedGroups, columns]);
+
+    return <svg ref={svgRef} className="saved-mindmap-lines" aria-hidden="true" />;
+}
+
+function WidgetArchiveEntry({ task, onOpenNotes }: { task: Task; onOpenNotes: (id: string) => void }) {
+    const label = task.title.trim() || (task.type === 'folder' ? 'مجموعة بدون اسم' : 'مهمة بدون اسم');
+    const children = task.children || [];
+
+    if (task.type === 'folder' || children.length > 0) {
+        return (
+            <details className="widget-archive-entry">
+                <summary><bdi>{label}</bdi></summary>
+                {task.type === 'item' && (
+                    <button type="button" onClick={() => onOpenNotes(task.id)}>عرض الملاحظات</button>
+                )}
+                {children.length > 0 ? (
+                    <ul>
+                        {children.map(child => (
+                            <li key={child.id}><WidgetArchiveEntry task={child} onOpenNotes={onOpenNotes} /></li>
+                        ))}
+                    </ul>
+                ) : <p>المجموعة فارغة</p>}
+            </details>
+        );
+    }
+
+    return (
+        <button type="button" onClick={() => onOpenNotes(task.id)} className={task.isCompleted ? 'line-through' : ''}>
+            <bdi>{label}</bdi>
+        </button>
+    );
+}
+
 export default function App() {
+    const mindMapClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current); }, []);
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [showUpdateResult, setShowUpdateResult] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'error'>('idle');
@@ -281,10 +400,24 @@ export default function App() {
     const [renamingListTitle, setRenamingListTitle] = useState('');
 
     const [viewMode, setViewMode] = useState<ViewMode>('groups');
+    const [mindMapByList, setMindMapByList] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(localStorage.getItem('injaz_mind_map_by_list') || '{}') || {};
+        } catch {
+            return {};
+        }
+    });
+    useEffect(() => {
+        localStorage.setItem('injaz_mind_map_by_list', JSON.stringify(mindMapByList));
+    }, [mindMapByList]);
+    const ungroupedId = ungroupedColumnId(activeListId);
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => {
         const saved = localStorage.getItem('injaz_collapsed_groups');
-        return saved ? new Set(JSON.parse(saved)) : new Set(['__ungrouped__']);
+        const ids = new Set<string>(saved ? JSON.parse(saved) : []);
+        const wasCollapsed = ids.delete('__ungrouped__');
+        if (wasCollapsed || !saved) lists.forEach(list => ids.add(ungroupedColumnId(list.id)));
+        return ids;
     });
 
     // --- TASKS STATE & HISTORY ---
@@ -638,8 +771,6 @@ export default function App() {
 
             if (isInput || isContentEditable) return;
 
-            // Use e.code instead of e.key to work with any keyboard language
-            // Undo: Ctrl+Z
             if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -737,12 +868,12 @@ export default function App() {
                 }
                 return;
             }
-            const groupId = newTask.parentId || '__ungrouped__';
+            const groupId = newTask.parentId;
 
             // Check if this group was previously empty/hidden in the current list
             const currentListTasks = tasksRef.current.filter(t => t.listId === activeListIdRef.current);
             const wasEmpty = !currentListTasks.some(t =>
-                (groupId === '__ungrouped__' ? (t.parentId === null && t.type !== 'folder') : (t.parentId === groupId)) && !t.isCompleted
+                (!groupId ? (t.parentId === null && t.type !== 'folder') : (t.parentId === groupId)) && !t.isCompleted
             );
 
             const saved = localStorage.getItem('injaz_tasks');
@@ -754,14 +885,14 @@ export default function App() {
 
             // If adding to "Uncategorized" and it was empty, and there's another folder open, 
             // keep "Uncategorized" collapsed so it doesn't pop up and distract.
-            if (viewModeRef.current === 'groups' && wasEmpty && groupId === '__ungrouped__') {
+            if (viewModeRef.current === 'groups' && wasEmpty && !groupId) {
                 const folders = tasksRef.current.filter(t => t.type === 'folder' && t.listId === activeListIdRef.current);
                 const anyFolderOpen = folders.some(f => !collapsedGroupIdsRef.current.has(f.id));
 
                 if (anyFolderOpen) {
                     setCollapsedGroupIds(prev => {
                         const next = new Set(prev);
-                        next.add('__ungrouped__');
+                        next.add(ungroupedColumnId(activeListIdRef.current));
                         return next;
                     });
                 }
@@ -1314,6 +1445,7 @@ export default function App() {
     // --- EFFECT: F5 SORT ---
 
     const activeList = lists.find(l => l.id === activeListId) || lists[0];
+    const isMindMap = mindMapByList[activeListId] ?? /^(?:\u0627\u0644)?\u0645\u062d\u0641\u0648\u0638\u0627\u062a$/.test((activeList?.title || '').replace(/[\u064B-\u065F\u0670\s]/g, ''));
     const currentFolder = currentFolderId ? findTask(currentFolderId, tasks) : null;
     const currentTasks = React.useMemo(() => {
         if (currentFolderId) {
@@ -1693,6 +1825,46 @@ export default function App() {
     }, [currentTasks, getSortedList, recentlyCompletedId]);
 
 
+    const widgetColumns = React.useMemo(() => {
+        const columns: WidgetColumn[] = [];
+        const ungrouped: Task[] = [];
+
+        for (const task of sortedActiveTasks) {
+            if (task.isArchived) continue;
+            if (task.type !== 'folder') {
+                ungrouped.push(task);
+                continue;
+            }
+
+            const children = (task.children || []).filter(child => !child.isCompleted && !child.isArchived);
+            const count = getEffectiveTaskCount(children);
+            const hasEditor = task.id === inlineEditingId || hasNewSubtaskInProgress(task, inlineEditingId);
+            if (count > 0 || hasEditor || task.id === folderActionPromptId) {
+                columns.push({ id: task.id, title: task.title, tasks: getSortedList(children), count });
+            }
+        }
+
+        const ungroupedCount = getEffectiveTaskCount(ungrouped);
+        if (ungroupedCount > 0 || ungrouped.some(task =>
+            task.id === inlineEditingId || task.id === recentlyCompletedId || hasNewSubtaskInProgress(task, inlineEditingId)
+        )) {
+            columns.unshift({ id: ungroupedId, title: 'غير معنون', tasks: getSortedList(ungrouped), count: ungroupedCount });
+        }
+        return columns;
+    }, [sortedActiveTasks, getEffectiveTaskCount, getSortedList, inlineEditingId, folderActionPromptId, ungroupedId, recentlyCompletedId]);
+
+    const archivedWidgetTasks = React.useMemo(() => {
+        const archived: Task[] = [];
+        function collect(items: Task[]) {
+            for (const task of items) {
+                if (task.isArchived) archived.push(task);
+                else if (task.children?.length) collect(task.children);
+            }
+        }
+        collect(currentTasks);
+        return archived;
+    }, [currentTasks]);
+
     const handleMoveTask = useCallback((taskId: string, direction: 'up' | 'down' | 'top' | 'bottom', isRepeat: boolean = false) => {
         if (sortBy !== 'custom') setSortBy('custom');
         let visualList: Task[] = [];
@@ -1910,6 +2082,25 @@ export default function App() {
 
             if (isInput || isContentEditable) return;
 
+            if (!e.defaultPrevented && !e.repeat && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+                !inlineEditingId && !isQuickAdding) {
+                if (e.code === 'KeyX' && activeTab === 'tasks' && !isModalOpen && !isSettingsOpen && !groupCreation.isOpen) {
+                    e.preventDefault();
+                    const showMindMap = viewMode !== 'groups' || !isMindMap;
+                    setMindMapByList(previous => ({ ...previous, [activeListId]: showMindMap }));
+                    setViewMode('groups');
+                    return;
+                }
+                if (e.code === 'KeyZ') {
+                    const ipc = (window as any).require?.('electron')?.ipcRenderer;
+                    if (ipc) {
+                        e.preventDefault();
+                        ipc.send('toggle-main-window-size');
+                        return;
+                    }
+                }
+            }
+
             // Skip undo/redo here - handled by separate listener
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
                 return;
@@ -2049,7 +2240,7 @@ export default function App() {
             window.removeEventListener('mousedown', handleMouseDown, true);
             window.removeEventListener('mouseup', handleMouseButton);
         };
-    }, [hotkeys, contextMenu, selectedTaskIds, currentTasks, isModalOpen, isSettingsOpen, groupCreation.isOpen, inlineEditingId, isQuickAdding, activeTab, viewMode, lists, activeListId, breadcrumbs, listHistory, listForwardHistory]);
+    }, [hotkeys, contextMenu, selectedTaskIds, currentTasks, isModalOpen, isSettingsOpen, groupCreation.isOpen, inlineEditingId, isQuickAdding, activeTab, viewMode, lists, activeListId, breadcrumbs, listHistory, listForwardHistory, isMindMap]);
 
 
 
@@ -2567,11 +2758,7 @@ export default function App() {
                 .map(t => t.id);
 
             if (behavior === 'collapseAll') {
-                if (allFolderIds.length > 0) {
-                    setCollapsedGroupIds(new Set([...allFolderIds, '__ungrouped__']));
-                } else {
-                    setCollapsedGroupIds(new Set(['__ungrouped__']));
-                }
+                setCollapsedGroupIds(new Set([...allFolderIds, ...lists.map(list => ungroupedColumnId(list.id))]));
             } else if (behavior === 'uncategorized') {
                 if (allFolderIds.length > 0) {
                     setCollapsedGroupIds(new Set(allFolderIds));
@@ -2579,11 +2766,26 @@ export default function App() {
             }
             // If 'lastOpened', do nothing (state is initialized from localStorage)
         }
-    }, [viewMode, preferences.startupGroupBehavior, tasks]);
+    }, [viewMode, preferences.startupGroupBehavior, tasks, lists]);
 
     const seenColumnsRef = useRef<Set<string>>(new Set());
     const hasPopulatedSeenColumnsRef = useRef(false);
     const lastActiveGroupColRef = useRef<string | null>(null);
+
+    // Keep only one saved-items branch open, including when restoring an older session.
+    useEffect(() => {
+        if (!isMindMap || viewMode !== 'groups') return;
+        const ids = widgetColumns.map(column => column.id);
+        const openIds = ids.filter(id => !collapsedGroupIds.has(id));
+        if (openIds.length <= 1) return;
+        const activeId = lastActiveGroupColRef.current && openIds.includes(lastActiveGroupColRef.current)
+            ? lastActiveGroupColRef.current : openIds[0];
+        setCollapsedGroupIds(prev => {
+            const next = new Set(prev);
+            ids.forEach(id => { if (id !== activeId) next.add(id); });
+            return next;
+        });
+    }, [isMindMap, viewMode, widgetColumns, collapsedGroupIds]);
 
     // Auto-collapse newly populated groups (e.g. from quick note background additions)
     useEffect(() => {
@@ -2593,8 +2795,8 @@ export default function App() {
                 .filter(t => t.type === 'folder' && (t.children || []).some(c => !c.isCompleted))
                 .map(t => t.id);
 
-            const hasUngrouped = tasks.some(t => t.type !== 'folder' && !t.isCompleted);
-            if (hasUngrouped) currentColumnIds.push('__ungrouped__');
+            const ungroupedColumns = tasks.filter(t => t.type !== 'folder' && !t.isCompleted).map(t => ungroupedColumnId(t.listId || 'default'));
+            currentColumnIds.push(...new Set(ungroupedColumns));
 
             if (!hasPopulatedSeenColumnsRef.current) {
                 currentColumnIds.forEach(id => seenColumnsRef.current.add(id));
@@ -3974,25 +4176,21 @@ export default function App() {
                         if (activeTab === 'tasks') {
                             if (viewMode === 'groups') {
                                 // Intelligent group selection for 'N' following visual column order
-                                const folders = sortedActiveTasks.filter(t => t.type === 'folder' && !t.isArchived);
-                                const expandedFolders = folders.filter(f => {
-                                    const hasActiveChildren = (f.children || []).some(c => !c.isCompleted);
-                                    return !collapsedGroupIds.has(f.id) && (hasActiveChildren || folderActionPromptId === f.id || inlineEditingId === f.id);
-                                });
+                                const expandedFolders = widgetColumns.filter(column => column.id !== ungroupedId && !collapsedGroupIds.has(column.id));
 
                                 let targetParentId: string | null = null;
                                 const preferredColId = lastActiveGroupColRef.current;
                                 if (preferredColId && !collapsedGroupIds.has(preferredColId)) {
-                                    if (preferredColId === '__ungrouped__') {
+                                    if (preferredColId === ungroupedId) {
                                         targetParentId = null;
                                     } else if (expandedFolders.some(f => f.id === preferredColId)) {
                                         targetParentId = preferredColId;
                                     }
                                 }
-                                if (targetParentId === null && preferredColId !== '__ungrouped__') {
+                                if (targetParentId === null && preferredColId !== ungroupedId) {
                                     if (expandedFolders.length > 0) {
                                         targetParentId = expandedFolders[0].id;
-                                    } else if (!collapsedGroupIds.has('__ungrouped__')) {
+                                    } else if (!collapsedGroupIds.has(ungroupedId)) {
                                         targetParentId = null;
                                     } else {
                                         targetParentId = null;
@@ -4002,12 +4200,12 @@ export default function App() {
                                 const newId = addTask({ title: '', priority: Priority.Medium, parentId: targetParentId, listId: activeListId });
 
                                 // Prevent auto-collapse effect from hiding our newly opened group
-                                seenColumnsRef.current.add(targetParentId || '__ungrouped__');
+                                seenColumnsRef.current.add(targetParentId || ungroupedId);
 
                                 // Ensure the target group is expanded
                                 setCollapsedGroupIds(prev => {
                                     const next = new Set(prev);
-                                    next.delete(targetParentId || '__ungrouped__');
+                                    next.delete(targetParentId || ungroupedId);
                                     return next;
                                 });
 
@@ -4026,7 +4224,7 @@ export default function App() {
 
         window.addEventListener('keydown', handleGlobalKeyDown);
         return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    }, [modifyTasks, activeTab, viewMode, addTask, activeListId, tasks, collapsedGroupIds]);
+    }, [modifyTasks, activeTab, viewMode, addTask, activeListId, tasks, collapsedGroupIds, ungroupedId, widgetColumns]);
 
     // --- EFFECT: AUTO-ARCHIVE INSTRUCTIONAL-ONLY GROUPS (e.g. after Undo) ---
     useEffect(() => {
@@ -4074,28 +4272,27 @@ export default function App() {
             const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || activeEl?.isContentEditable;
             if (isInput || inlineEditingId) return;
 
-            // Compute columns in the exact visual order rendered in Group View
-            const folders = sortedActiveTasks.filter(t => t.type === 'folder' && !t.isArchived);
-            const ungrouped = sortedActiveTasks.filter(t => t.type !== 'folder');
-            const cols: string[] = [];
-            folders.forEach(folder => {
-                const activeChildren = (folder.children || []).filter(c => !c.isCompleted);
-                if (activeChildren.length > 0 || folderActionPromptId === folder.id || inlineEditingId === folder.id) {
-                    cols.push(folder.id);
-                }
-            });
-            if (ungrouped.length > 0) {
-                cols.unshift('__ungrouped__');
-            }
+            const cols = widgetColumns.map(column => column.id);
+            if (cols.length === 0) return;
 
             // Toggle Expand/Collapse (W / ص)
             if (e.key === 'w' || e.key === 'W' || e.key === 'ص' || e.key === 'و') {
                 e.preventDefault();
                 const isAnyCollapsed = cols.some(id => collapsedGroupIds.has(id));
-                if (isAnyCollapsed) {
-                    setCollapsedGroupIds(new Set());
+                if (isMindMap) {
+                    const openId = cols.find(id => !collapsedGroupIds.has(id));
+                    const next = new Set(collapsedGroupIds);
+                    cols.forEach(id => next.add(id));
+                    if (!openId && cols[0]) { next.delete(cols[0]); lastActiveGroupColRef.current = cols[0]; }
+                    setCollapsedGroupIds(next);
+                } else if (isAnyCollapsed) {
+                    setCollapsedGroupIds(previous => {
+                        const next = new Set(previous);
+                        cols.forEach(id => next.delete(id));
+                        return next;
+                    });
                 } else {
-                    setCollapsedGroupIds(new Set(cols));
+                    setCollapsedGroupIds(previous => new Set([...previous, ...cols]));
                 }
                 return;
             }
@@ -4103,7 +4300,7 @@ export default function App() {
             // Collapse All Only (S / س)
             if (e.key === 's' || e.key === 'S' || e.key === 'س') {
                 e.preventDefault();
-                setCollapsedGroupIds(new Set(cols));
+                setCollapsedGroupIds(previous => new Set([...previous, ...cols]));
                 return;
             }
 
@@ -4141,7 +4338,7 @@ export default function App() {
                         const next = new Set(prev);
                         next.delete(targetId); // Open target
 
-                        if (preferences.autoCollapse) {
+                        if (preferences.autoCollapse || isMindMap) {
                             cols.forEach(id => {
                                 if (id !== targetId) next.add(id);
                             });
@@ -4162,7 +4359,7 @@ export default function App() {
 
         window.addEventListener('keydown', handleWidgetNavigation);
         return () => window.removeEventListener('keydown', handleWidgetNavigation);
-    }, [activeTab, viewMode, sortedActiveTasks, collapsedGroupIds, folderActionPromptId, preferences.autoCollapse, inlineEditingId]);
+    }, [activeTab, viewMode, widgetColumns, collapsedGroupIds, preferences.autoCollapse, inlineEditingId, isMindMap]);
 
     return (
         <div
@@ -4951,51 +5148,34 @@ export default function App() {
 
                 {/* =========== GROUP VIEW =========== */}
                 {viewMode === 'groups' && activeTab === 'tasks' && (
-                    <div
-                        ref={groupsContainerRef}
+                    <section
                         dir="rtl"
-                        className="flex gap-5 pb-20 overflow-x-auto items-start pl-32"
+                        className="flex flex-col w-full min-w-0"
                         style={{ minHeight: 'calc(100vh - 130px)' }}
-                        onScroll={e => {
-                            const target = e.target as HTMLDivElement;
-                            if (target.scrollWidth > target.clientWidth + 10) {
-                                groupsScrollPos.current = target.scrollLeft;
-                            }
-                        }}
                         onContextMenu={e => {
-                            if (e.target === e.currentTarget) {
+                            if (e.target === e.currentTarget || e.target === groupsContainerRef.current) {
                                 e.preventDefault();
                                 setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: null, source: 'widgets-bg' });
                             }
                         }}
                         onClick={e => {
-                            if (e.target === e.currentTarget && folderActionPromptId) {
+                            if ((e.target === e.currentTarget || e.target === groupsContainerRef.current) && folderActionPromptId) {
                                 handleFolderPromptAction(folderActionPromptId, 'delete');
                             }
                         }}
                     >
-                        {(() => {
-                            // sortedActiveTasks already reflects the selected sort mode.
-                            const folders = sortedActiveTasks
-                                .filter(t => t.type === 'folder' && !t.isArchived);
-
-                            const ungrouped = sortedActiveTasks.filter(t => t.type !== 'folder');
-
-                            // Build columns: folders with active tasks + ungrouped
-                            const columns: { id: string; title: string; tasks: any[] }[] = [];
-
-                            folders.forEach(folder => {
-                                const activeChildren = getSortedList((folder.children || [])
-                                    .filter(c => !c.isCompleted));
-                                // Skip empty folders UNLESS they have a pending prompt
-                                if (activeChildren.length === 0 && folderActionPromptId !== folder.id && inlineEditingId !== folder.id) return;
-                                columns.push({ id: folder.id, title: folder.title, tasks: activeChildren });
-                            });
-
-                            if (ungrouped.length > 0) {
-                                columns.unshift({ id: '__ungrouped__', title: 'غير معنون', tasks: getSortedList(ungrouped) });
+                    <div
+                        ref={groupsContainerRef}
+                        className={isMindMap ? 'saved-mindmap-container' : 'flex flex-1 gap-5 pb-4 overflow-x-auto items-start'}
+                        onScroll={e => {
+                            const target = e.currentTarget;
+                            if (target.scrollWidth > target.clientWidth + 10) {
+                                groupsScrollPos.current = target.scrollLeft;
                             }
-
+                        }}
+                    >
+                        {(() => {
+                            const columns = widgetColumns;
                             if (columns.length === 0) {
                                 return (
                                     <div className="flex-1 flex flex-col items-center justify-center py-24">
@@ -5008,7 +5188,12 @@ export default function App() {
                             }
 
 
-                            return columns.map(col => (
+                            const rows = Math.ceil(columns.length / 2);
+                            return <div className={isMindMap ? 'saved-mindmap' : 'contents'}>
+                                {isMindMap && <MindMapConnections collapsedGroups={collapsedGroupIds} columns={widgetColumns} />}
+                                {isMindMap && <div className="saved-mindmap-root" style={{ gridRow: `1 / span ${rows}` }}>{activeList.title}</div>}
+                                {columns.map((col, index) => (
+                                <div key={col.id} className={isMindMap ? `saved-mindmap-branch ${index % 2 === 0 ? 'saved-mindmap-right' : 'saved-mindmap-left'}` : 'contents'} style={isMindMap ? { gridColumn: index % 2 === 0 ? 3 : 1, gridRow: Math.floor(index / 2) + 1 } : undefined}>
                                 <div
                                     key={col.id}
                                     onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-red-400', 'bg-red-50/20'); }}
@@ -5031,7 +5216,7 @@ export default function App() {
                                             let updated = removeFrom(prev);
                                             if (!draggedTask) return prev;
                                             const dt = draggedTask as Task;
-                                            if (col.id === '__ungrouped__') {
+                                            if (col.id === ungroupedId) {
                                                 // Move to root (no parent)
                                                 return [{ ...dt, parentId: null }, ...updated];
                                             } else {
@@ -5044,11 +5229,15 @@ export default function App() {
                                         });
                                     }}
                                     id={`widget-col-${col.id}`}
-                                    className={`flex-shrink-0 w-80 bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-2xl overflow-hidden transition-all duration-500 ease-in-out ${preferences.focusBlur !== false && columns.some(c => !collapsedGroupIds.has(c.id) && c.id !== col.id) && collapsedGroupIds.has(col.id) ? 'blur-[1px] opacity-40 brightness-75 hover:blur-0 hover:opacity-100 hover:brightness-100' : ''}`}
+                                    className={`${isMindMap ? 'saved-mindmap-card' : 'flex-shrink-0 w-80 transition-all duration-500 ease-in-out'} bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-2xl overflow-hidden ${!isMindMap && preferences.focusBlur !== false && columns.some(c => !collapsedGroupIds.has(c.id) && c.id !== col.id) && collapsedGroupIds.has(col.id) ? 'blur-[1px] opacity-40 brightness-75 hover:blur-0 hover:opacity-100 hover:brightness-100' : ''}`}
                                 >
                                     {/* Column Header - click to collapse/expand */}
                                     <div
-                                        className="flex items-center gap-2 px-4 py-3 border-b border-gray-100/80 cursor-pointer hover:bg-red-50/50 transition-colors select-none"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-expanded={!collapsedGroupIds.has(col.id)}
+                                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); e.currentTarget.click(); } }}
+                                        className={`flex items-center gap-2 px-4 py-3 border-b border-gray-100/80 cursor-pointer hover:bg-red-50/50 transition-colors select-none ${isMindMap ? 'saved-mindmap-heading' : ''}`}
                                         onClick={() => {
                                             setCollapsedGroupIds(prev => {
                                                 const next = new Set(prev);
@@ -5058,7 +5247,7 @@ export default function App() {
                                                     lastActiveGroupColRef.current = col.id;
                                                     next.delete(col.id);
                                                     // autoCollapse: collapse all other columns
-                                                    if (preferences.autoCollapse) {
+                                                    if (preferences.autoCollapse || isMindMap) {
                                                         columns.forEach(c => { if (c.id !== col.id) next.add(c.id); });
                                                     }
                                                 } else {
@@ -5071,7 +5260,7 @@ export default function App() {
                                             });
                                         }}
                                         onContextMenu={e => {
-                                            if (col.id === '__ungrouped__') return;
+                                            if (col.id === ungroupedId) return;
                                             e.preventDefault();
                                             setContextMenu({ isOpen: true, x: e.clientX / preferences.zoom, y: e.clientY / preferences.zoom, taskId: col.id, source: 'context' });
                                         }}
@@ -5128,7 +5317,7 @@ export default function App() {
                                             <span
                                                 className={`${/[\u0600-\u06FF]/.test(col.title) ? 'font-bold' : 'font-medium'} text-red-500 text-base flex-1 min-w-0 break-words overflow-wrap-anywhere`}
                                                 onDoubleClick={(e) => {
-                                                    if (col.id === '__ungrouped__') return;
+                                                    if (col.id === ungroupedId) return;
                                                     e.stopPropagation();
                                                     const folder = findTask(col.id, tasks);
                                                     if (folder) handleStartInlineEdit(e as any, folder);
@@ -5139,11 +5328,15 @@ export default function App() {
                                         )}
                                         {findTask(col.id, tasks)?.isGoogleListFolder && <GoogleMark />}
                                         <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                                            {getEffectiveTaskCount(col.tasks)}
+                                            {col.count}
                                         </span>
                                     </div>
-                                    {/* Column Tasks - animated expand/collapse like list view */}
-                                    <div className={`grid transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsedGroupIds.has(col.id) ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+                                    <div
+                                        data-open={isMindMap ? !collapsedGroupIds.has(col.id) : undefined}
+                                        inert={isMindMap && collapsedGroupIds.has(col.id)}
+                                        className={isMindMap ? 'saved-mindmap-items' : 'grid transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] ' +
+                                            (collapsedGroupIds.has(col.id) ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100')}
+                                    >
                                         <div className="overflow-hidden min-w-0">
                                             <div
                                                 className="px-3 py-2 flex flex-col min-h-[40px]"
@@ -5178,6 +5371,7 @@ export default function App() {
                                                         return (
                                                             <div
                                                                 key={task.id}
+                                                                data-mindmap-item={isMindMap ? '' : undefined}
                                                                 draggable
                                                                 onDragStart={e => {
                                                                     e.dataTransfer.setData('taskId', task.id);
@@ -5244,6 +5438,12 @@ export default function App() {
                                                                 }}
                                                                 className={`flex items-start gap-2 px-2 py-2.5 cursor-pointer hover:bg-indigo-50/60 transition-all rounded-lg relative ${inlineEditingId === task.id ? 'bg-indigo-50/50' : ''} ${idx < col.tasks.length - 1 ? 'border-b border-gray-100/60' : ''} ${completingTaskId === task.id ? 'animate-premium-complete' : ''} ${isTaskEmpty ? 'opacity-25' : ''}`}
                                                                 onClick={e => {
+                                                                    if (isMindMap && task.type === 'item' && inlineEditingId !== task.id) {
+                                                                        e.stopPropagation();
+                                                                        if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+                                                                        mindMapClickTimer.current = setTimeout(() => openTaskNotes(task.id), 250);
+                                                                        return;
+                                                                    }
                                                                     const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
                                                                     if (hasSubtasks) {
                                                                         const target = e.target as HTMLElement;
@@ -5261,6 +5461,7 @@ export default function App() {
                                                                 data-notes-task={task.id}
                                                                 onDoubleClick={e => {
                                                                     e.stopPropagation();
+                                                                    if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
                                                                     handleStartInlineEdit(e, task);
                                                                 }}
                                                                 onContextMenu={e => {
@@ -5507,10 +5708,27 @@ export default function App() {
                                         </div>
                                     </div>
                                 </div>
-                            ));
+                                </div>
+                            ))}</div>;
 
                         })()}
                     </div>
+                        {archivedWidgetTasks.length > 0 && (
+                            <details key={currentFolderId || activeListId} className="widget-archive">
+                                <summary>
+                                    <Icons.Archive size={15} />
+                                    <span>الأرشيف</span>
+                                    <span className="widget-archive-count">{archivedWidgetTasks.length}</span>
+                                    <Icons.ChevronDown size={13} className="widget-archive-chevron" />
+                                </summary>
+                                <ul className="widget-archive-list">
+                                    {archivedWidgetTasks.map(task => (
+                                        <li key={task.id}><WidgetArchiveEntry task={task} onOpenNotes={openTaskNotes} /></li>
+                                    ))}
+                                </ul>
+                            </details>
+                        )}
+                    </section>
                 )}
 
 

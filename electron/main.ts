@@ -8,6 +8,13 @@ import { pathToFileURL } from 'url';
 import url from 'url';
 import { FULL_DEV_ENV, registerDevMode } from './dev-mode';
 
+// Windows launchers can close their output pipes while the app is still running.
+for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EPIPE') throw error;
+    });
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
     app.quit();
@@ -808,6 +815,17 @@ if (!gotTheLock) {
         platform: process.platform,
         isPackaged: app.isPackaged
     }));
+
+    ipcMain.on('toggle-main-window-size', event => {
+        if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+        if (mainWindow.isFullScreen()) {
+            mainWindow.setFullScreen(false);
+        } else if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+        } else {
+            mainWindow.maximize();
+        }
+    });
 
     ipcMain.on('maximize-window', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
