@@ -88,8 +88,17 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
                 neededTop = Math.max(neededTop, panelHeight / 2 - center + 24);
                 neededBottom = Math.max(neededBottom, panelHeight / 2 - (innerHeight - center) + 24);
                 if (note) {
+                    const navigationBottom = document.querySelector('nav')?.getBoundingClientRect().bottom || 0;
+                    const viewportTop = Math.max(12, navigationBottom + 12, mapBox.top + 2 * scale);
+                    const viewportBottom = window.innerHeight - 12;
+                    const minimumHeight = Math.min(280 * scale, Math.max(0, viewportBottom - viewportTop));
+                    const noteTop = Math.max(viewportTop, Math.min(headingBox.top, viewportBottom - minimumHeight));
+                    const offset = (noteTop - headingBox.top) / scale;
+                    const maxHeight = Math.max(0, (viewportBottom - noteTop) / scale);
+                    note.style.top = `${offset}px`;
+                    note.style.maxHeight = `${maxHeight}px`;
                     const noteBottom = center - headingBox.height / (2 * scale) + note.offsetHeight;
-                    neededBottom = Math.max(neededBottom, noteBottom - innerHeight + 24);
+                    neededBottom = Math.max(neededBottom, noteBottom + offset - innerHeight + 24);
                 }
             }
             map.style.setProperty('--mindmap-padding-top', `${Math.ceil(neededTop)}px`);

@@ -135,6 +135,11 @@
 .mindmap-note-card {
     min-width: 0;
     padding: 9px 13px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #d5cfe0 transparent;
     grid-row: 1;
     border: 1px solid #dedbee;
     border-radius: 14px;
