@@ -138,8 +138,8 @@
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: #d5cfe0 transparent;
+    scrollbar-width: auto;
+    scrollbar-color: auto;
     grid-row: 1;
     border: 1px solid #dedbee;
     border-radius: 14px;
@@ -149,6 +149,23 @@
     line-height: 1.65;
     user-select: text;
     text-align: start;
+}
+.mindmap-note-card::-webkit-scrollbar {
+    width: 6px;
+}
+.mindmap-note-card::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 12px;
+}
+.mindmap-note-card::-webkit-scrollbar-thumb {
+    background: #d5cfe0;
+    border-radius: 6px;
+}
+.mindmap-note-card::-webkit-scrollbar-button:single-button,
+.mindmap-note-card::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
 }
 .mindmap-note-card .note-content {
     width: 100%;
