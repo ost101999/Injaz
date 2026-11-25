@@ -1508,10 +1508,17 @@ export default function App() {
         setMapNoteId(null);
         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
     }, [activeListId, inTaskMap, currentFolderId]);
-    function toggleMapNote(id: string) {
+    function toggleMapNote(id: string, revealSubtasks = false) {
         if (saveMapNotes.current?.() === false) return;
         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
-        mindMapClickTimer.current = setTimeout(() => setMapNoteId(previous => previous === id ? null : id), 250);
+        mindMapClickTimer.current = setTimeout(() => {
+            if (revealSubtasks) {
+                setMapNoteId(null);
+                setExpandedFolderIds(previous => new Set(previous).add(id));
+                return;
+            }
+            setMapNoteId(previous => previous === id ? null : id);
+        }, 250);
     }
 
     const currentFolder = currentFolderId ? findTask(currentFolderId, tasks) : null;
@@ -5689,6 +5696,7 @@ export default function App() {
                                                 ) : (
                                                     col.tasks.map((task, idx) => {
                                                         const isEditingChild = (task.children || []).some((c: Task) => c.id === inlineEditingId);
+                                                        const hasSubtasks = task.children?.some(child => !child.isCompleted);
                                                         const isTaskEmpty = !task.isCompleted
                                                             && getEffectiveTaskCount([task]) === 0
                                                             && inlineEditingId !== task.id
@@ -5766,11 +5774,9 @@ export default function App() {
                                                                 onClick={e => {
                                                                     if (isMindMap && task.type === 'item' && inlineEditingId !== task.id) {
                                                                         e.stopPropagation();
-                                                                        if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
-                                                                        toggleMapNote(task.id);
+                                                                        toggleMapNote(task.id, hasSubtasks && !expandedFolderIds.has(task.id));
                                                                         return;
                                                                     }
-                                                                    const hasSubtasks = task.children && task.children.filter((c: Task) => !c.isCompleted).length > 0;
                                                                     if (hasSubtasks) {
                                                                         const target = e.target as HTMLElement;
                                                                         const isTextClick = target.closest('[data-task-title]') !== null;
