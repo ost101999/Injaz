@@ -92,9 +92,13 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
                     const viewportTop = Math.max(12, navigationBottom + 12, mapBox.top + 2 * scale);
                     const viewportBottom = window.innerHeight - 12;
                     const naturalHeight = note.scrollHeight + (note.offsetHeight - note.clientHeight);
-                    const noteTop = Math.max(viewportTop, Math.min(headingBox.top, viewportBottom - naturalHeight * scale));
+                    const availableHeight = Math.max(0, viewportBottom - viewportTop);
+                    const inset = naturalHeight * scale > availableHeight ? Math.min(70, availableHeight * 0.09) : 0;
+                    const topLimit = viewportTop + inset;
+                    const bottomLimit = viewportBottom - inset;
+                    const noteTop = Math.max(topLimit, Math.min(headingBox.top, bottomLimit - naturalHeight * scale));
                     const offset = (noteTop - headingBox.top) / scale;
-                    const maxHeight = Math.max(0, (viewportBottom - noteTop) / scale);
+                    const maxHeight = Math.max(0, (bottomLimit - noteTop) / scale);
                     note.style.top = `${offset}px`;
                     note.style.maxHeight = `${maxHeight}px`;
                     const noteBottom = center - headingBox.height / (2 * scale) + note.offsetHeight;
