@@ -4576,6 +4576,42 @@ export default function App() {
         groupCreation.isOpen, reorderingGroups, isMindMap, currentTasks, getSortedList, widgetColumns,
         ungroupedId, groupOrderByList, groupOrderKey, reorderingGroupId, collapsedGroupIds, currentFolderId, activeListId, modifyTasks]);
 
+    useEffect(() => {
+        const handleMapEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.repeat || event.isComposing || !inTaskMap ||
+                reorderingGroups || inlineEditingId || isQuickAdding || isModalOpen ||
+                isSettingsOpen || groupCreation.isOpen) return;
+
+            const openColumns = widgetColumns.filter(column => !column.archived && !collapsedGroupIds.has(column.id));
+            const openTasks = openColumns.flatMap(column => column.tasks);
+            const expandedTask = [...openTasks].reverse().find(task => expandedFolderIds.has(task.id));
+            if (!mapNoteId && !expandedTask && openColumns.length === 0) return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+            if (mapNoteId) {
+                if (saveMapNotes.current?.() !== false) setMapNoteId(null);
+            } else if (expandedTask) {
+                setExpandedFolderIds(previous => {
+                    const next = new Set(previous);
+                    next.delete(expandedTask.id);
+                    return next;
+                });
+            } else {
+                setCollapsedGroupIds(previous => {
+                    const next = new Set(previous);
+                    openColumns.forEach(column => next.add(column.id));
+                    return next;
+                });
+                lastActiveGroupColRef.current = null;
+            }
+        };
+        window.addEventListener('keydown', handleMapEscape, true);
+        return () => window.removeEventListener('keydown', handleMapEscape, true);
+    }, [inTaskMap, reorderingGroups, inlineEditingId, isQuickAdding, isModalOpen, isSettingsOpen,
+        groupCreation.isOpen, widgetColumns, collapsedGroupIds, expandedFolderIds, mapNoteId]);
+
     // --- EFFECT: WIDGET ARROW NAVIGATION ---
     useEffect(() => {
         const handleWidgetNavigation = (e: KeyboardEvent) => {
