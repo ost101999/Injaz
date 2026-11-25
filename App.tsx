@@ -84,9 +84,13 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
             for (const { heading, panel, note } of branches) {
                 const headingBox = heading.getBoundingClientRect();
                 const center = (headingBox.top + headingBox.height / 2 - mapBox.top) / scale - paddingTop;
-                const height = Math.max(panel.getBoundingClientRect().height / scale, note?.offsetHeight || 0);
-                neededTop = Math.max(neededTop, height / 2 - center + 24);
-                neededBottom = Math.max(neededBottom, height / 2 - (innerHeight - center) + 24);
+                const panelHeight = panel.getBoundingClientRect().height / scale;
+                neededTop = Math.max(neededTop, panelHeight / 2 - center + 24);
+                neededBottom = Math.max(neededBottom, panelHeight / 2 - (innerHeight - center) + 24);
+                if (note) {
+                    const noteBottom = center - headingBox.height / (2 * scale) + note.offsetHeight;
+                    neededBottom = Math.max(neededBottom, noteBottom - innerHeight + 24);
+                }
             }
             map.style.setProperty('--mindmap-padding-top', `${Math.ceil(neededTop)}px`);
             map.style.setProperty('--mindmap-padding-bottom', `${Math.ceil(neededBottom)}px`);
@@ -96,12 +100,14 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
             const rootBox = root.getBoundingClientRect();
             const remaining = new Map(Array.from(svg.querySelectorAll('path'), path => [path.dataset.edge!, path]));
 
-            function connect(key: string, from: DOMRect, to: DOMRect, leaf = false) {
+            function connect(key: string, from: DOMRect, to: DOMRect, leaf = false, alignToSource = false) {
                 // Extend under the card borders to avoid gaps at fractional zoom.
                 const x1 = from.left - bounds.left + 1;
                 const x2 = to.right - bounds.left - 1;
                 const y1 = from.top + from.height / 2 - bounds.top;
-                const y2 = to.top + to.height / 2 - bounds.top;
+                const y2 = (alignToSource
+                    ? Math.max(to.top + 12, Math.min(from.top + from.height / 2, to.bottom - 12))
+                    : to.top + to.height / 2) - bounds.top;
                 const middle = (x1 + x2) / 2;
                 let path = remaining.get(key);
                 if (!path) {
@@ -121,7 +127,7 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
             for (const { id, heading, panel, items, note, source } of branches) {
                 if (note && source) {
                     const key = 'note/' + noteId;
-                    connect(key, source.getBoundingClientRect(), note.getBoundingClientRect(), true);
+                    connect(key, source.getBoundingClientRect(), note.getBoundingClientRect(), true, true);
                     svg.querySelector('path[data-edge="' + CSS.escape(key) + '"]')?.classList.add('mindmap-note-line');
                 }
                 const headingBox = heading.getBoundingClientRect();
