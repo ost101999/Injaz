@@ -30,6 +30,21 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
     const selection = window.getSelection();
     if (!selection?.isCollapsed || !selection.rangeCount || !selection.focusNode || !editor.contains(selection.focusNode)) return false;
     const range = selection.getRangeAt(0);
+    const heading = (range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
+        ?.closest<HTMLElement>('[data-note-heading]');
+    if (event.key === 'Enter' && heading && editor.contains(heading)) {
+        event.preventDefault();
+        const remaining = document.createRange();
+        remaining.selectNodeContents(heading);
+        remaining.setStart(range.startContainer, range.startOffset);
+        const nextLine = document.createElement('div');
+        nextLine.append(remaining.extractContents());
+        if (!nextLine.hasChildNodes()) nextLine.append(document.createElement('br'));
+        heading.after(nextLine);
+        selection.collapse(nextLine, 0);
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertParagraph' }));
+        return true;
+    }
     const { before, after, line } = lineContext(editor, range.startContainer, range.startOffset);
     const offset = textOffset(editor, range.startContainer, range.startOffset);
     if (event.key === ' ' && /\S[\s\S]*\.\.\.$/.test(before) && before.slice(0, -3).trim() && !after.trim()) {
@@ -39,6 +54,7 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
         titleRange.setEnd(...textPosition(editor, offset - 3, false));
         const title = document.createElement('div');
         title.setAttribute('data-note-heading', '');
+        title.dir = 'auto';
         let contents: Node = titleRange.cloneContents();
         let ancestor = titleRange.commonAncestorContainer instanceof Element
             ? titleRange.commonAncestorContainer
@@ -90,10 +106,17 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
 }
 
 export function prepareNoteArrowSelection(editor: HTMLElement, event: KeyboardEvent) {
-    if (!event.shiftKey || event.metaKey || event.altKey || event.isComposing ||
+    if (event.metaKey || event.altKey || event.isComposing ||
         (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
     const selection = window.getSelection();
     if (!selection?.focusNode || !editor.contains(selection.focusNode)) return;
+    const focusElement = selection.focusNode instanceof Element ? selection.focusNode : selection.focusNode.parentElement;
+    const heading = focusElement?.closest<HTMLElement>('[data-note-heading]');
+    if (heading) {
+        heading.dir = 'auto';
+        return; // Use native visual movement and selection in the heading's own direction.
+    }
+    if (!event.shiftKey) return;
     const { before, after } = lineContext(editor, selection.focusNode, selection.focusOffset);
     const letters = (before + after).match(/\p{Letter}/gu);
     if (!letters) return;

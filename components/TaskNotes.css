@@ -22,20 +22,24 @@
 .note-content ol { list-style: decimal; }
 .note-content ul { list-style: disc; }
 .note-content hr { border: 0; border-top: 1px solid rgba(100, 116, 139, 0.2); margin: 0.6em 0; }
-:is(.note-content, .quick-note-editor) div[data-note-heading] {
+:is(.note-content, .quick-note-editor) div[data-note-heading]:not(:has(div, p, br, ol, ul, hr)) {
     display: flex;
     align-items: center;
-    gap: 0.75em;
     text-align: center;
     color: #64748b;
     margin: 0.6em 0;
 }
-:is(.note-content, .quick-note-editor) div[data-note-heading]::before,
-:is(.note-content, .quick-note-editor) div[data-note-heading]::after {
+:is(.note-content, .quick-note-editor) div[data-note-heading]:not(:has(div, p, br, ol, ul, hr))::before,
+:is(.note-content, .quick-note-editor) div[data-note-heading]:not(:has(div, p, br, ol, ul, hr))::after {
     content: '';
-    flex: 1;
-    min-width: 1em;
+    flex: 1 1 0;
     border-top: 1px solid rgba(100, 116, 139, 0.2);
+}
+:is(.note-content, .quick-note-editor) div[data-note-heading]:not(:has(div, p, br, ol, ul, hr))::before {
+    margin-inline-end: 0.75em;
+}
+:is(.note-content, .quick-note-editor) div[data-note-heading]:not(:has(div, p, br, ol, ul, hr))::after {
+    margin-inline-start: 0.75em;
 }
 .note-content ol, .note-content ul { padding-inline-start: 1.5em; }
 .task-notes footer { padding: 10px 16px; color: #a52135; }
