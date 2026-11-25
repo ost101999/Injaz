@@ -4715,6 +4715,7 @@ export default function App() {
     return (
         <div
             className="min-h-screen flex flex-col bg-white text-slate-800 font-naskh"
+            style={inTaskMap ? { minHeight: `calc(100vh / ${preferences.zoom || 1})` } : undefined}
             onMouseDown={handleSelectionMouseDown}
             onMouseMove={handleSelectionMouseMove}
             onMouseUp={handleSelectionMouseUp}
@@ -5501,8 +5502,8 @@ export default function App() {
                 {viewMode === 'groups' && activeTab === 'tasks' && (
                     <section
                         dir="rtl"
-                        className="flex flex-col w-full min-w-0"
-                        style={{ minHeight: 'calc(100vh - 130px)' }}
+                        className={`flex flex-col w-full min-w-0 ${isMindMap ? 'flex-1' : ''}`}
+                        style={isMindMap ? undefined : { minHeight: 'calc(100vh - 130px)' }}
                         onContextMenu={e => {
                             if (e.target === e.currentTarget || e.target === groupsContainerRef.current) {
                                 e.preventDefault();
