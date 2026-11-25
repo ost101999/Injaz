@@ -32,6 +32,18 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
     const range = selection.getRangeAt(0);
     const { before, after } = lineContext(editor, range.startContainer, range.startOffset);
     const offset = textOffset(editor, range.startContainer, range.startOffset);
+    if (event.key === ' ' && /\S[\s\S]*\.\.\.$/.test(before) && before.slice(0, -3).trim() && !after.trim()) {
+        event.preventDefault();
+        const titleRange = range.cloneRange();
+        titleRange.setStart(...textPosition(editor, offset - before.length, false));
+        titleRange.setEnd(...textPosition(editor, offset - 3, false));
+        const title = document.createElement('div');
+        title.setAttribute('data-note-heading', '');
+        title.append(titleRange.cloneContents());
+        range.setStart(...textPosition(editor, offset - before.length, false));
+        document.execCommand('insertHTML', false, title.outerHTML + '<div><br></div>');
+        return true;
+    }
     if (event.key === ' ' && /^[\t \u00a0]*\.\.\.$/.test(before) && !after.trim()) {
         event.preventDefault();
         range.setStart(...textPosition(editor, offset - 3, false));

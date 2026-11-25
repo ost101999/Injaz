@@ -31,6 +31,7 @@ function safeNotes(html: string) {
             if (node.style.fontSize) element.style.fontSize = node.style.fontSize;
             if (node.style.opacity === '0.5') element.style.opacity = '0.5';
             if (node.tagName === 'SPAN' && node.hasAttribute('data-empty-rtl-number')) element.setAttribute('data-empty-rtl-number', '');
+            if (node.tagName === 'DIV' && node.hasAttribute('data-note-heading')) element.setAttribute('data-note-heading', '');
             target.append(element);
         }
         node.childNodes.forEach(child => copy(child, element));
