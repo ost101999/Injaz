@@ -156,6 +156,18 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+.mindmap-note-editor {
+    min-height: 1.65em;
+    outline: none;
+    cursor: text;
+}
+.mindmap-note-editor:empty::before {
+    content: 'اكتب ملاحظة...';
+    color: #aaa2ad;
+    pointer-events: none;
+}
+.mindmap-note-save-error { color: #a52135; font-size: .8em; }
+.mindmap-note-save-error button { text-decoration: underline; }
 @media (prefers-reduced-motion: no-preference) {
     .mindmap-note-card { animation: mindmap-notes-in 240ms ease-out; }
 }

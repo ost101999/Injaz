@@ -96,7 +96,8 @@ function MindMapConnections({ collapsedGroups, columns, noteId, expandedFolders 
                     const inset = naturalHeight * scale > availableHeight ? Math.min(70, availableHeight * 0.09) : 0;
                     const topLimit = viewportTop + inset;
                     const bottomLimit = viewportBottom - inset;
-                    const noteTop = Math.max(topLimit, Math.min(headingBox.top, bottomLimit - naturalHeight * scale));
+                    const preferredTop = headingBox.top - Math.max(0, headingBox.top - topLimit) * 0.3;
+                    const noteTop = Math.max(topLimit, Math.min(preferredTop, bottomLimit - naturalHeight * scale));
                     const offset = (noteTop - headingBox.top) / scale;
                     const maxHeight = Math.max(0, (bottomLimit - noteTop) / scale);
                     note.style.top = `${offset}px`;
@@ -1374,6 +1375,7 @@ export default function App() {
     const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
     const failedNote = useRef(false);
     const saveOpenNotes = useRef<(() => boolean) | null>(null);
+    const saveMapNotes = useRef<(() => boolean) | null>(null);
     const notesTask = notesTaskId ? findTask(notesTaskId, tasks) : null;
 
     const saveTaskNotes = (id: string, html: string, title?: string) => {
@@ -1407,7 +1409,7 @@ export default function App() {
     };
 
     const openTaskNotes = (id: string) => {
-        if (findTask(id, tasksRef.current)?.type !== 'item' || saveOpenNotes.current?.() === false) return;
+        if (findTask(id, tasksRef.current)?.type !== 'item' || saveMapNotes.current?.() === false || saveOpenNotes.current?.() === false) return;
         setContextMenu(previous => ({ ...previous, isOpen: false }));
         setActiveSubmenu(null);
         setMoveTargetListId(null);
@@ -1503,6 +1505,7 @@ export default function App() {
         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
     }, [activeListId, inTaskMap, currentFolderId]);
     function toggleMapNote(id: string) {
+        if (saveMapNotes.current?.() === false) return;
         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
         mindMapClickTimer.current = setTimeout(() => setMapNoteId(previous => previous === id ? null : id), 250);
     }
@@ -5551,6 +5554,7 @@ export default function App() {
                                         onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); e.currentTarget.click(); } }}
                                         className={`flex items-center gap-2 px-4 py-3 border-b border-gray-100/80 cursor-pointer hover:bg-red-50/50 transition-colors select-none ${isMindMap ? 'saved-mindmap-heading' : ''} ${reorderingGroups && reorderingGroupId === col.id ? 'widget-order-selected' : ''}`}
                                         onClick={() => {
+                                            if (isMindMap && saveMapNotes.current?.() === false) return;
                                             if (reorderingGroups) {
                                                 setReorderingGroupId(col.id);
                                                 return;
@@ -6039,7 +6043,8 @@ export default function App() {
                                             </div>
                                         </div>
                                     </div>
-                                    {selected && <MapNotePreview key={selected.id} html={selected.notesHtml} description={selected.description} />}
+                                    {selected && <MapNotePreview key={selected.id} html={selected.notesHtml} description={selected.description}
+                                        save={html => saveTaskNotes(selected.id, html)} saveBeforeSwitch={saveMapNotes} />}
                                 </div>
                                 </div>
                             ); })}</div>;

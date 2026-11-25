@@ -44,19 +44,47 @@ function loadNoteContent(element: HTMLElement, html: string) {
     return repairSavedNumbering(element);
 }
 
-export function MapNotePreview({ html, description }: { html?: string; description?: string }) {
-    const body = useRef<HTMLDivElement>(null);
-    const { size } = useNoteFontSize();
+export function MapNotePreview({ html, description, save, saveBeforeSwitch }: {
+    html?: string;
+    description?: string;
+    save: (html: string) => boolean;
+    saveBeforeSwitch: React.RefObject<(() => boolean) | null>;
+}) {
+    const editor = useRef<HTMLDivElement>(null);
+    const [failed, setFailed] = useState(false);
+    const { size, handleSizeShortcut } = useNoteFontSize();
+
     useLayoutEffect(() => {
-        if (body.current) loadNoteContent(body.current, html || '');
+        if (editor.current && loadNoteContent(editor.current, html || '')) persist();
+    }, []);
+
+    useLayoutEffect(() => {
+        const node = editor.current;
+        if (!node || node.contains(document.activeElement)) return;
+        const safeHtml = safeNotes(html || '');
+        if (safeNotes(node.innerHTML) !== safeHtml) loadNoteContent(node, safeHtml);
     }, [html]);
+
+    function persist() {
+        const node = editor.current;
+        if (!node) return true;
+        const saved = save(node.textContent?.trim() || node.querySelector('hr') ? safeNotes(node.innerHTML) : '');
+        setFailed(!saved);
+        return saved;
+    }
+
+    useLayoutEffect(() => {
+        saveBeforeSwitch.current = persist;
+        return () => { saveBeforeSwitch.current = null; };
+    });
 
     return (
         <section className="mindmap-note-card" aria-label="معلومات المهمة" dir="rtl"
             style={{ fontSize: size }} onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}>
             {description && <div className="note-content" dir="auto">{description}</div>}
-            <div className="note-content" ref={body} />
-            {!description && !html && <span>لا توجد ملاحظات</span>}
+            <NoteBody editor={editor} persist={persist} handleSizeShortcut={handleSizeShortcut}
+                className="mindmap-note-editor note-content" />
+            {failed && <div className="mindmap-note-save-error" role="alert">تعذر الحفظ. <button type="button" onClick={persist}>إعادة المحاولة</button></div>}
         </section>
     );
 }
@@ -147,6 +175,82 @@ function moveCaretUp(editor: HTMLElement, event: React.KeyboardEvent, preferredX
     return x;
 }
 
+function NoteBody({ editor, persist, handleSizeShortcut, className, style }: {
+    editor: React.RefObject<HTMLDivElement | null>;
+    persist: () => boolean;
+    handleSizeShortcut: (event: React.KeyboardEvent) => boolean;
+    className: string;
+    style?: React.CSSProperties;
+}) {
+    const caretColumn = useRef<number | null>(null);
+    const format = (command: string, value?: string) => {
+        document.execCommand(command, false, value);
+        persist();
+    };
+
+    return (
+            <div ref={editor} className={className} style={style} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
+                onInput={event => {
+                    const input = event.nativeEvent as InputEvent;
+                    if (!input.isComposing && input.inputType !== 'historyUndo' && input.inputType !== 'historyRedo') {
+                        updateNumberedNoteLine(event.currentTarget);
+                    }
+                    persist();
+                }}
+                onCompositionEnd={event => {
+                    updateNumberedNoteLine(event.currentTarget);
+                    persist();
+                }}
+                onPaste={event => {
+                    event.preventDefault();
+                    const html = event.clipboardData.getData('text/html');
+                    if (html) {
+                        const cleaned = preparePastedNotes(html, event.clipboardData.getData('text/plain'));
+                        if (cleaned) {
+                            format('insertHTML', cleaned);
+                            return;
+                        }
+                    }
+                    const plainText = event.clipboardData.getData('text/plain');
+                    format('insertText', /^[^\r\n]+\r?\n$/.test(plainText) ? plainText.replace(/\r?\n$/, '') : plainText);
+                }}
+                onPointerDown={() => { caretColumn.current = null; }}
+                onBlur={() => { caretColumn.current = null; }}
+                onKeyDown={event => {
+                    prepareNoteArrowSelection(event.currentTarget, event.nativeEvent);
+                    if (handleBlueBullet(event.currentTarget, event.nativeEvent)) return;
+                    caretColumn.current = event.key === 'ArrowUp'
+                        ? moveCaretUp(event.currentTarget, event, caretColumn.current)
+                        : null;
+                    if (event.defaultPrevented) return;
+                    if (handleSizeShortcut(event)) return;
+                    if (handleNoteFormatShortcut(event.currentTarget, event.nativeEvent) ||
+                        removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
+                        event.stopPropagation();
+                        return;
+                    }
+                    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.nativeEvent.isComposing) {
+                        const command = !event.shiftKey && event.code === 'KeyB' ? 'bold'
+                            : event.shiftKey && event.code === 'KeyW' ? 'hiliteColor'
+                            : event.shiftKey && event.code === 'Digit7' ? 'insertOrderedList'
+                            : event.shiftKey && event.code === 'Digit8' ? 'insertUnorderedList'
+                            : null;
+                        if (command) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (command === 'hiliteColor') {
+                                toggleNoteHighlight(event.currentTarget, highlight);
+                                persist();
+                            } else format(command);
+                            return;
+                        }
+                    }
+                    if (endNoteHighlight(event.currentTarget, event.nativeEvent) ||
+                        handleNoteEditing(event.currentTarget, event.nativeEvent)) event.stopPropagation();
+                }} />
+    );
+}
+
 export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
     title: string;
     initial: string;
@@ -155,7 +259,6 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
     saveBeforeSwitch: React.RefObject<(() => boolean) | null>;
 }) {
     const editor = useRef<HTMLDivElement>(null);
-    const caretColumn = useRef<number | null>(null);
     const panel = useRef<HTMLElement>(null);
     const titleInput = useRef<HTMLInputElement>(null);
     const titleEdited = useRef(false);
@@ -226,11 +329,6 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
         return () => window.clearTimeout(timer);
     }, [closing]);
 
-    const format = (command: string, value?: string) => {
-        document.execCommand(command, false, value);
-        persist();
-    };
-
     return (
         <aside ref={panel} className="task-notes" data-task-notes data-closing={closing || undefined} inert={closing}
             dir="rtl" aria-label="ملاحظات المهمة" onAnimationEnd={event => {
@@ -247,65 +345,8 @@ export function TaskNotes({ title, initial, save, close, saveBeforeSwitch }: {
                         }
                     }} />
             </header>
-            <div ref={editor} className="task-notes-editor note-content" style={{ fontSize: size }} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="الملاحظات" dir="rtl"
-                onInput={event => {
-                    const input = event.nativeEvent as InputEvent;
-                    if (!input.isComposing && input.inputType !== 'historyUndo' && input.inputType !== 'historyRedo') {
-                        updateNumberedNoteLine(event.currentTarget);
-                    }
-                    persist();
-                }}
-                onCompositionEnd={event => {
-                    updateNumberedNoteLine(event.currentTarget);
-                    persist();
-                }}
-                onPaste={event => {
-                    event.preventDefault();
-                    const html = event.clipboardData.getData('text/html');
-                    if (html) {
-                        const cleaned = preparePastedNotes(html, event.clipboardData.getData('text/plain'));
-                        if (cleaned) {
-                            format('insertHTML', cleaned);
-                            return;
-                        }
-                    }
-                    const plainText = event.clipboardData.getData('text/plain');
-                    format('insertText', /^[^\r\n]+\r?\n$/.test(plainText) ? plainText.replace(/\r?\n$/, '') : plainText);
-                }}
-                onPointerDown={() => { caretColumn.current = null; }}
-                onBlur={() => { caretColumn.current = null; }}
-                onKeyDown={event => {
-                    prepareNoteArrowSelection(event.currentTarget, event.nativeEvent);
-                    if (handleBlueBullet(event.currentTarget, event.nativeEvent)) return;
-                    caretColumn.current = event.key === 'ArrowUp'
-                        ? moveCaretUp(event.currentTarget, event, caretColumn.current)
-                        : null;
-                    if (event.defaultPrevented) return;
-                    if (handleSizeShortcut(event)) return;
-                    if (handleNoteFormatShortcut(event.currentTarget, event.nativeEvent) ||
-                        removeNumberedNoteMarker(event.currentTarget, event.nativeEvent)) {
-                        event.stopPropagation();
-                        return;
-                    }
-                    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.nativeEvent.isComposing) {
-                        const command = !event.shiftKey && event.code === 'KeyB' ? 'bold'
-                            : event.shiftKey && event.code === 'KeyW' ? 'hiliteColor'
-                            : event.shiftKey && event.code === 'Digit7' ? 'insertOrderedList'
-                            : event.shiftKey && event.code === 'Digit8' ? 'insertUnorderedList'
-                            : null;
-                        if (command) {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            if (command === 'hiliteColor') {
-                                toggleNoteHighlight(event.currentTarget, highlight);
-                                persist();
-                            } else format(command);
-                            return;
-                        }
-                    }
-                    if (endNoteHighlight(event.currentTarget, event.nativeEvent) ||
-                        handleNoteEditing(event.currentTarget, event.nativeEvent)) event.stopPropagation();
-                }} />
+            <NoteBody editor={editor} persist={persist} handleSizeShortcut={handleSizeShortcut}
+                className="task-notes-editor note-content" style={{ fontSize: size }} />
             {failed && <footer role="alert">تعذر الحفظ. <button type="button" onClick={persist}>إعادة المحاولة</button></footer>}
         </aside>
     );
