@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useNoteFontSize } from './useNoteFontSize';
 import { endNoteHighlight, handleBlueBullet, handleNoteFormatShortcut, prepareNoteArrowSelection, removeNumberedNoteMarker, toggleNoteHighlight } from './noteEditing';
+import './TaskNotes.css';
 // Assuming electron API is available globally or via window (nodeIntegration: true)
 const electron = (window as any).require ? (window as any).require('electron') : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -1666,7 +1667,7 @@ export const QuickAddWindow = () => {
                             onCopy={handleCopy}
                             onCut={handleCut}
                             onClick={handleContentClick}
-                            className="w-full h-full bg-transparent text-xl font-medium focus:outline-none resize-none leading-relaxed overflow-auto whitespace-pre-wrap outline-none pr-4 pl-4 custom-scrollbar"
+                            className="quick-note-editor w-full h-full bg-transparent text-xl font-medium focus:outline-none resize-none leading-relaxed overflow-auto whitespace-pre-wrap outline-none pr-4 pl-4 custom-scrollbar"
                             style={{ fontFamily: 'Amiri', fontSize: size, caretColor: '#333', direction: containerDir, textAlign: containerDir === 'rtl' ? 'right' : 'left' }}
                             dir={containerDir}
                             placeholder="اكتب ملاحظة" />

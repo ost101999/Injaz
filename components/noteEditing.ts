@@ -30,7 +30,7 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
     const selection = window.getSelection();
     if (!selection?.isCollapsed || !selection.rangeCount || !selection.focusNode || !editor.contains(selection.focusNode)) return false;
     const range = selection.getRangeAt(0);
-    const { before, after } = lineContext(editor, range.startContainer, range.startOffset);
+    const { before, after, line } = lineContext(editor, range.startContainer, range.startOffset);
     const offset = textOffset(editor, range.startContainer, range.startOffset);
     if (event.key === ' ' && /\S[\s\S]*\.\.\.$/.test(before) && before.slice(0, -3).trim() && !after.trim()) {
         event.preventDefault();
@@ -39,7 +39,17 @@ export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boo
         titleRange.setEnd(...textPosition(editor, offset - 3, false));
         const title = document.createElement('div');
         title.setAttribute('data-note-heading', '');
-        title.append(titleRange.cloneContents());
+        let contents: Node = titleRange.cloneContents();
+        let ancestor = titleRange.commonAncestorContainer instanceof Element
+            ? titleRange.commonAncestorContainer
+            : titleRange.commonAncestorContainer.parentElement;
+        while (ancestor && ancestor !== line && ancestor !== editor) {
+            const wrapper = ancestor.cloneNode(false);
+            wrapper.appendChild(contents);
+            contents = wrapper;
+            ancestor = ancestor.parentElement;
+        }
+        title.append(contents);
         range.setStart(...textPosition(editor, offset - before.length, false));
         document.execCommand('insertHTML', false, title.outerHTML + '<div><br></div>');
         return true;
