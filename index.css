@@ -43,28 +43,6 @@
 .saved-mindmap-heading { min-height: 54px; }
 .saved-mindmap-heading[aria-expanded='true'] { background: #eeebff; }
 .saved-mindmap-heading[aria-expanded='true'] span.text-red-500 { color: #5145e5; }
-@container (max-width: 700px) {
-    .saved-mindmap { display: flex; flex-direction: column; gap: 16px; margin: 24px auto; }
-    .saved-mindmap-root { width: min(100%, 280px); }
-    .saved-mindmap-branch { width: min(100%, 480px); }
-
-}
-
-@container (width > 700px) {
-    .saved-mindmap { position: relative; width: min(100%, 1450px); gap: 24px 30px; }
-    .saved-mindmap-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 0; }
-    .saved-mindmap-lines path { fill: none; stroke: #b3b6c7; stroke-width: 1.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-    .saved-mindmap-root, .saved-mindmap-branch { z-index: 1; }
-
-    .saved-mindmap-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: center; direction: ltr; background: transparent; border: 0; border-radius: 0; overflow: visible; backdrop-filter: none; }
-    .saved-mindmap-heading { padding-inline: 10px; gap: 5px; direction: rtl; grid-row: 1; border: 1px solid #e5e7eb; border-radius: 999px; background: white; }
-    .saved-mindmap-items { direction: rtl; grid-row: 1; min-width: 0; }
-    .saved-mindmap-right .saved-mindmap-heading, .saved-mindmap-left .saved-mindmap-items { grid-column: 1; }
-    .saved-mindmap-right .saved-mindmap-items, .saved-mindmap-left .saved-mindmap-heading { grid-column: 2; }
-    .saved-mindmap-items [data-mindmap-item] { background: white; border: 1px solid #e5e7eb; border-radius: 14px; margin-block: 4px; }
-}
-@container (max-width: 700px) { .saved-mindmap-lines { display: none; } }
-
 .widget-archive {
     width: min(100%, 360px);
     margin: 20px 0 0 auto;
@@ -129,7 +107,6 @@
     grid-template-rows: 1fr;
     opacity: 1;
 }
-.saved-mindmap-right { --leaf-origin: left center; }
 .saved-mindmap-left { --leaf-origin: right center; }
 .saved-mindmap-items [data-mindmap-item] {
     transform-origin: var(--leaf-origin);
@@ -171,33 +148,105 @@
     text-align: start;
 }
 .mindmap-note-card .note-content { white-space: pre; min-width: 100%; width: max-content; }
-.saved-mindmap-right .mindmap-note-card { grid-column: 3; }
-.saved-mindmap-left .mindmap-note-card { grid-column: 1; }
-@container (width > 700px) {
-    .saved-mindmap:has(.saved-mindmap-right .mindmap-note-card) {
-        grid-template-columns: minmax(0, 1fr) clamp(95px, 11%, 150px) minmax(0, 3fr);
-    }
-    .saved-mindmap:has(.saved-mindmap-left .mindmap-note-card) {
-        grid-template-columns: minmax(0, 3fr) clamp(95px, 11%, 150px) minmax(0, 1fr);
-    }
-    .saved-mindmap-right .saved-mindmap-card:has(.mindmap-note-card) { grid-template-columns: minmax(0,.8fr) minmax(0,1fr) minmax(0,1.7fr); }
-    .saved-mindmap-left .saved-mindmap-card:has(.mindmap-note-card) { grid-template-columns: minmax(0,1.7fr) minmax(0,1fr) minmax(0,.8fr); }
-    .saved-mindmap-left .saved-mindmap-card:has(.mindmap-note-card) .saved-mindmap-heading { grid-column: 3; }
-    .saved-mindmap-left .saved-mindmap-card:has(.mindmap-note-card) .saved-mindmap-items { grid-column: 2; }
-}
-@container (max-width: 700px) {
-    .saved-mindmap:has(.mindmap-note-card) { position: relative; }
-    .saved-mindmap:has(.mindmap-note-card) .saved-mindmap-lines { display: block; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .saved-mindmap-lines path { display: none; }
-    .saved-mindmap-lines .mindmap-note-line { display: block; fill: none; stroke: #aaa4c5; stroke-width: 1.5; }
-    .saved-mindmap-card:has(.mindmap-note-card) { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1fr); align-items: center; direction: ltr; column-gap: 12px; backdrop-filter: none; background: transparent; }
-    .saved-mindmap-card:has(.mindmap-note-card) .saved-mindmap-heading { grid-column: 1 / -1; direction: rtl; }
-    .saved-mindmap-card:has(.mindmap-note-card) .saved-mindmap-items { grid-row: 2; direction: rtl; }
-    .saved-mindmap-right .mindmap-note-card { grid-column: 2; }
-    .mindmap-note-card { grid-row: 2; }
-    .saved-mindmap-left .saved-mindmap-card:has(.mindmap-note-card) .saved-mindmap-items { grid-column: 2; }
-}
 @media (prefers-reduced-motion: no-preference) {
     .mindmap-note-card { animation: mindmap-notes-in 240ms ease-out; }
 }
 @keyframes mindmap-notes-in { from { opacity: 0; } to { opacity: 1; } }
+/* Sections remain in a single fixed column. Open items and notes occupy
+   separate columns to the left without moving the other section headings. */
+.saved-mindmap-container { padding-inline: 20px; }
+.saved-mindmap {
+    position: relative;
+    display: grid;
+    direction: ltr;
+    grid-template-columns: minmax(0, 1fr) clamp(100px, 12%, 150px);
+    grid-auto-rows: minmax(58px, auto);
+    gap: 14px 28px;
+    width: max(760px, 100%);
+    max-width: 1450px;
+    margin: 0 auto;
+    padding-block: var(--mindmap-padding-top, 40px) var(--mindmap-padding-bottom, 40px);
+    align-items: center;
+}
+.saved-mindmap-root { grid-column: 2; z-index: 1; }
+.saved-mindmap-branch { grid-column: 1; align-self: center; z-index: 1; }
+.saved-mindmap-branch:has(.mindmap-note-card),
+.saved-mindmap-branch:has(.saved-mindmap-items[data-open="true"]) { z-index: 2; }
+.saved-mindmap-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 0; }
+.saved-mindmap-lines path { fill: none; stroke: #b3b6c7; stroke-width: 1.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.saved-mindmap-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    direction: rtl;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    backdrop-filter: none;
+}
+.saved-mindmap-heading {
+    width: 25%;
+    margin-left: auto;
+    min-height: 58px;
+    padding-inline: 10px;
+    gap: 5px;
+    direction: rtl;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: white;
+}
+.saved-mindmap-items {
+    position: absolute;
+    right: 28%;
+    width: 30%;
+    top: 50%;
+    translate: 0 -50%;
+    direction: rtl;
+}
+.saved-mindmap-items > div { overflow: hidden; }
+.saved-mindmap-items [data-mindmap-item] { background: white; border: 1px solid #e5e7eb; border-radius: 14px; margin-block: 4px; }
+.saved-mindmap-left { --leaf-origin: right center; }
+.mindmap-note-card {
+    position: absolute;
+    left: 0;
+    width: 38%;
+    top: 50%;
+    translate: 0 -50%;
+    max-height: 320px;
+}
+@container (max-width: 700px) {
+    .saved-mindmap { margin-inline: 0; }
+}
+/* Draw the ring inside the rounded card so the scrolling row never clips it. */
+[id^="widget-col-"] > [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 1.5px #938bae;
+    border-radius: inherit;
+}
+.saved-mindmap-card > .saved-mindmap-heading:focus-visible { border-radius: 999px; }
+[data-ordering] > [role="button"] {
+    border-radius: inherit;
+    background: #fff;
+    border-bottom-color: transparent;
+    transition: background-color 200ms, box-shadow 200ms, color 200ms;
+}
+.saved-mindmap-card[data-ordering] > .saved-mindmap-heading { border-radius: 999px; }
+[data-ordering] > [role="button"] .text-red-500 { color: #554f65; }
+[data-ordering] > [role="button"]:hover { background: #f8f7fb; }
+.widget-order-archived[data-ordering] > [role="button"] { background: #fafafb; }
+.widget-order-archived[data-ordering] > [role="button"] .text-red-500 { color: #737482; }
+.widget-order-archive-label { display: inline-flex; color: #92949f; }
+[data-ordering][data-selected] > [role="button"] {
+    outline: none;
+    box-shadow: inset 0 0 0 1.5px #aba2c9;
+    background: #f6f4fa;
+}
+[data-ordering][data-selected] > [role="button"] .text-red-500 { color: #554776; }
+@media (prefers-reduced-motion: no-preference) {
+    .widget-order-archived { animation: widget-order-appear 360ms ease-out both; }
+    @keyframes widget-order-appear {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+}

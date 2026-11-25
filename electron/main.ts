@@ -992,7 +992,7 @@ if (!gotTheLock) {
             `);
             BrowserWindow.getAllWindows().forEach(win => {
                 if (!win.isDestroyed() && win.webContents !== event.sender) {
-                    win.webContents.send('data-updated', 'tasks');
+                    win.webContents.send('data-updated', 'folder-order', listId);
                 }
             });
             return true;
