@@ -1506,6 +1506,7 @@ export default function App() {
     const [mapNoteId, setMapNoteId] = useState<string | null>(null);
     useEffect(() => {
         setMapNoteId(null);
+        lastMindMapGroupColRef.current = null;
         if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
     }, [activeListId, inTaskMap, currentFolderId]);
     function toggleMapNote(id: string, revealSubtasks = false) {
@@ -2963,15 +2964,20 @@ export default function App() {
     const seenColumnsRef = useRef<Set<string>>(new Set());
     const hasPopulatedSeenColumnsRef = useRef(false);
     const lastActiveGroupColRef = useRef<string | null>(null);
+    const lastMindMapGroupColRef = useRef<string | null>(null);
 
     // Keep only one saved-items branch open, including when restoring an older session.
     useEffect(() => {
         if (!isMindMap || viewMode !== 'groups') return;
         const ids = widgetColumns.filter(column => !column.archived).map(column => column.id);
         const openIds = ids.filter(id => !collapsedGroupIds.has(id));
+        if (openIds.length === 1) {
+            lastMindMapGroupColRef.current = openIds[0];
+        }
         if (openIds.length <= 1) return;
         const activeId = lastActiveGroupColRef.current && openIds.includes(lastActiveGroupColRef.current)
             ? lastActiveGroupColRef.current : openIds[0];
+        lastMindMapGroupColRef.current = activeId;
         setCollapsedGroupIds(prev => {
             const next = new Set(prev);
             ids.forEach(id => { if (id !== activeId) next.add(id); });
@@ -4457,11 +4463,95 @@ export default function App() {
     useEffect(() => () => cancelAnimationFrame(groupOrderScrollFrame.current),
         [activeListId, currentFolderId, isMindMap, activeTab, viewMode]);
 
-    // Alt + arrows enter group ordering and move the selected group.
+    const matchesNavKey = (event: KeyboardEvent, code: string, keys: string[]) =>
+        event.code === code || keys.includes(event.key);
+    const isNavW = (event: KeyboardEvent) => matchesNavKey(event, 'KeyW', ['w', 'W', 'ص', 'و']);
+    const isNavS = (event: KeyboardEvent) => matchesNavKey(event, 'KeyS', ['s', 'S', 'س']);
+    const isNavD = (event: KeyboardEvent) => matchesNavKey(event, 'KeyD', ['d', 'D', 'ي', 'د']);
+    const isNavA = (event: KeyboardEvent) => matchesNavKey(event, 'KeyA', ['a', 'A', 'ش']);
+
+    const closeMindMapOneStep = () => {
+        const openColumns = widgetColumns.filter(column => !column.archived && !collapsedGroupIds.has(column.id));
+        const openTasks = openColumns.flatMap(column => column.tasks);
+        const expandedTask = [...openTasks].reverse().find(task => expandedFolderIds.has(task.id));
+        if (!mapNoteId && !expandedTask && openColumns.length === 0) return false;
+
+        if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+        if (mapNoteId) {
+            if (saveMapNotes.current?.() !== false) setMapNoteId(null);
+        } else if (expandedTask) {
+            setExpandedFolderIds(previous => {
+                const next = new Set(previous);
+                next.delete(expandedTask.id);
+                return next;
+            });
+        } else {
+            lastMindMapGroupColRef.current = lastActiveGroupColRef.current && openColumns.some(c => c.id === lastActiveGroupColRef.current)
+                ? lastActiveGroupColRef.current
+                : openColumns[0].id;
+            setCollapsedGroupIds(previous => {
+                const next = new Set(previous);
+                openColumns.forEach(column => next.add(column.id));
+                return next;
+            });
+            lastActiveGroupColRef.current = null;
+        }
+        return true;
+    };
+
+    const scrollOrderedCardIntoView = (cardId: string) => {
+        cancelAnimationFrame(groupOrderScrollFrame.current);
+        groupOrderScrollFrame.current = requestAnimationFrame(() => {
+            const container = groupsContainerRef.current;
+            const card = document.getElementById(`widget-col-${cardId}`);
+            if (!container || !card) return;
+            const moving = isMindMap ? card.closest<HTMLElement>('.saved-mindmap-branch') || card : card;
+            const bounds = container.getBoundingClientRect();
+            const cardBounds = card.getBoundingClientRect();
+            const zoom = bounds.width / container.offsetWidth || 1;
+            const transform = getComputedStyle(moving).transform;
+            if (isMindMap) {
+                const yOffset = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m42 * zoom;
+                const navBottom = document.querySelector('nav')?.getBoundingClientRect().bottom || 0;
+                const margin = 16 * zoom;
+                const topLimit = Math.max(margin, navBottom + margin);
+                const bottomLimit = window.innerHeight - margin;
+                const top = cardBounds.top - yOffset;
+                const bottom = cardBounds.bottom - yOffset;
+                const deltaY = top < topLimit
+                    ? top - topLimit
+                    : bottom > bottomLimit ? bottom - bottomLimit : 0;
+                if (deltaY) window.scrollBy({ top: deltaY, behavior: 'smooth' });
+                return;
+            }
+            const offset = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41 * zoom;
+            const left = cardBounds.left - offset;
+            const right = cardBounds.right - offset;
+            const margin = 12 * zoom;
+            const delta = left < bounds.left + margin
+                ? left - bounds.left - margin
+                : right > bounds.right - margin ? right - bounds.right + margin : 0;
+            if (!delta) return;
+            const start = container.scrollLeft;
+            const distance = delta / zoom;
+            const startTime = performance.now();
+            const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800;
+            const scroll = (now: number) => {
+                const progress = duration ? Math.min(1, (now - startTime) / duration) : 1;
+                const eased = 1 - Math.pow(1 - progress, 3);
+                container.scrollLeft = start + distance * eased;
+                if (progress < 1) groupOrderScrollFrame.current = requestAnimationFrame(scroll);
+            };
+            groupOrderScrollFrame.current = requestAnimationFrame(scroll);
+        });
+    };
+
+    // Alt + arrows/WASD enter group ordering and move the selected group;
+    // plain arrows/WASD inside group ordering move selection between groups.
     useEffect(() => {
         const handleGroupOrdering = (event: KeyboardEvent) => {
             if (activeTab !== 'tasks' || viewMode !== 'groups') return;
-            const target = event.target as HTMLElement | null;
+            const target = event.target instanceof Element ? (event.target as HTMLElement) : null;
             if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]') ||
                 inlineEditingId || isQuickAdding || isModalOpen || isSettingsOpen || groupCreation.isOpen ||
                 event.isComposing) return;
@@ -4474,10 +4564,12 @@ export default function App() {
                 setReorderingGroupId(null);
                 return;
             }
-            if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+            if (!event.altKey && !reorderingGroups) return;
+
             const direction = isMindMap
-                ? event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
-                : event.key === 'ArrowRight' ? -1 : event.key === 'ArrowLeft' ? 1 : 0;
+                ? (event.key === 'ArrowUp' || isNavW(event)) ? -1 : (event.key === 'ArrowDown' || isNavS(event)) ? 1 : 0
+                : (event.key === 'ArrowRight' || isNavD(event)) ? -1 : (event.key === 'ArrowLeft' || isNavA(event)) ? 1 : 0;
             if (!direction) return;
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -4506,38 +4598,19 @@ export default function App() {
             const lastOpen = openGroups.find(column => column.id === lastActiveGroupColRef.current)?.id;
             const selected = [reorderingGroupId, lastOpen, ...openGroups.map(column => column.id), focused]
                 .find(id => id && candidates.includes(id)) || candidates[0];
+
+            if (!event.altKey) {
+                const position = candidates.indexOf(selected);
+                const nextSelected = candidates[position + direction];
+                const targetSelected = nextSelected || selected;
+                setReorderingGroupId(targetSelected);
+                scrollOrderedCardIntoView(targetSelected);
+                return;
+            }
+
             setReorderingGroups(true);
             setReorderingGroupId(selected);
-            cancelAnimationFrame(groupOrderScrollFrame.current);
-            groupOrderScrollFrame.current = requestAnimationFrame(() => {
-                const container = groupsContainerRef.current;
-                const card = document.getElementById(`widget-col-${selected}`);
-                if (!container || !card) return;
-                const moving = isMindMap ? card.closest<HTMLElement>('.saved-mindmap-branch') || card : card;
-                const bounds = container.getBoundingClientRect();
-                const cardBounds = card.getBoundingClientRect();
-                const zoom = bounds.width / container.offsetWidth || 1;
-                const transform = getComputedStyle(moving).transform;
-                const offset = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41 * zoom;
-                const left = cardBounds.left - offset;
-                const right = cardBounds.right - offset;
-                const margin = 12 * zoom;
-                const delta = left < bounds.left + margin
-                    ? left - bounds.left - margin
-                    : right > bounds.right - margin ? right - bounds.right + margin : 0;
-                if (!delta) return;
-                const start = container.scrollLeft;
-                const distance = delta / zoom;
-                const startTime = performance.now();
-                const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800;
-                const scroll = (now: number) => {
-                    const progress = duration ? Math.min(1, (now - startTime) / duration) : 1;
-                    const eased = 1 - Math.pow(1 - progress, 3);
-                    container.scrollLeft = start + distance * eased;
-                    if (progress < 1) groupOrderScrollFrame.current = requestAnimationFrame(scroll);
-                };
-                groupOrderScrollFrame.current = requestAnimationFrame(scroll);
-            });
+            scrollOrderedCardIntoView(selected);
             if (!reorderingGroups) return;
             const position = candidates.indexOf(selected);
             const neighbor = candidates[position + direction];
@@ -4582,30 +4655,9 @@ export default function App() {
                 reorderingGroups || inlineEditingId || isQuickAdding || isModalOpen ||
                 isSettingsOpen || groupCreation.isOpen) return;
 
-            const openColumns = widgetColumns.filter(column => !column.archived && !collapsedGroupIds.has(column.id));
-            const openTasks = openColumns.flatMap(column => column.tasks);
-            const expandedTask = [...openTasks].reverse().find(task => expandedFolderIds.has(task.id));
-            if (!mapNoteId && !expandedTask && openColumns.length === 0) return;
-
+            if (!closeMindMapOneStep()) return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
-            if (mapNoteId) {
-                if (saveMapNotes.current?.() !== false) setMapNoteId(null);
-            } else if (expandedTask) {
-                setExpandedFolderIds(previous => {
-                    const next = new Set(previous);
-                    next.delete(expandedTask.id);
-                    return next;
-                });
-            } else {
-                setCollapsedGroupIds(previous => {
-                    const next = new Set(previous);
-                    openColumns.forEach(column => next.add(column.id));
-                    return next;
-                });
-                lastActiveGroupColRef.current = null;
-            }
         };
         window.addEventListener('keydown', handleMapEscape, true);
         return () => window.removeEventListener('keydown', handleMapEscape, true);
@@ -4616,6 +4668,7 @@ export default function App() {
     useEffect(() => {
         const handleWidgetNavigation = (e: KeyboardEvent) => {
             if (activeTab !== 'tasks' || viewMode !== 'groups') return;
+            if (isModalOpen || isSettingsOpen || groupCreation.isOpen || isQuickAdding) return;
 
             // Skip shortcuts if user is typing in any input or contentEditable
             const activeEl = document.activeElement as HTMLElement;
@@ -4626,17 +4679,85 @@ export default function App() {
             const cols = widgetColumns.map(column => column.id);
             if (cols.length === 0) return;
 
+            if (isMindMap) {
+                let currentIndex = -1;
+                if (lastActiveGroupColRef.current && !collapsedGroupIds.has(lastActiveGroupColRef.current)) {
+                    currentIndex = cols.indexOf(lastActiveGroupColRef.current);
+                }
+                if (currentIndex === -1) {
+                    currentIndex = cols.findIndex(id => !collapsedGroupIds.has(id));
+                }
+
+                const openMindMapBranch = (targetId: string) => {
+                    if (saveMapNotes.current?.() === false) return;
+                    if (mindMapClickTimer.current) clearTimeout(mindMapClickTimer.current);
+                    if (mapNoteId && cols[currentIndex] !== targetId) {
+                        setMapNoteId(null);
+                    }
+                    lastActiveGroupColRef.current = targetId;
+                    lastMindMapGroupColRef.current = targetId;
+                    setCollapsedGroupIds(prev => {
+                        const next = new Set(prev);
+                        next.delete(targetId);
+                        cols.forEach(id => {
+                            if (id !== targetId) next.add(id);
+                        });
+                        return next;
+                    });
+                    setTimeout(() => {
+                        const targetEl = document.getElementById(`widget-col-${targetId}`);
+                        targetEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                    }, 50);
+                };
+
+                // D / ArrowRight = close one level at a time (note -> subtasks -> branch), never toggle open
+                if (e.key === 'ArrowRight' || isNavD(e)) {
+                    e.preventDefault();
+                    closeMindMapOneStep();
+                    return;
+                }
+
+                // A / ArrowLeft = open last visited branch (or first branch), do nothing if already open
+                if (e.key === 'ArrowLeft' || isNavA(e)) {
+                    e.preventDefault();
+                    if (currentIndex !== -1) return;
+                    const remembered = lastMindMapGroupColRef.current;
+                    const targetId = remembered && cols.includes(remembered) ? remembered : cols[0];
+                    openMindMapBranch(targetId);
+                    return;
+                }
+
+                // W / ArrowUp = move up, S / ArrowDown = move down (opening the target branch)
+                const isUp = e.key === 'ArrowUp' || isNavW(e);
+                const isDown = e.key === 'ArrowDown' || isNavS(e);
+                if (isUp || isDown) {
+                    e.preventDefault();
+                    let nextIndex: number;
+                    if (currentIndex !== -1) {
+                        nextIndex = isUp ? currentIndex - 1 : currentIndex + 1;
+                    } else {
+                        const rememberedIdx = lastMindMapGroupColRef.current ? cols.indexOf(lastMindMapGroupColRef.current) : -1;
+                        if (rememberedIdx !== -1) {
+                            nextIndex = isUp
+                                ? Math.max(0, rememberedIdx - 1)
+                                : Math.min(cols.length - 1, rememberedIdx + 1);
+                        } else {
+                            nextIndex = isUp ? cols.length - 1 : 0;
+                        }
+                    }
+
+                    if (nextIndex >= 0 && nextIndex < cols.length) {
+                        openMindMapBranch(cols[nextIndex]);
+                    }
+                }
+                return;
+            }
+
             // Toggle Expand/Collapse (W / ص)
-            if (e.key === 'w' || e.key === 'W' || e.key === 'ص' || e.key === 'و') {
+            if (isNavW(e)) {
                 e.preventDefault();
                 const isAnyCollapsed = cols.some(id => collapsedGroupIds.has(id));
-                if (isMindMap) {
-                    const openId = cols.find(id => !collapsedGroupIds.has(id));
-                    const next = new Set(collapsedGroupIds);
-                    cols.forEach(id => next.add(id));
-                    if (!openId && cols[0]) { next.delete(cols[0]); lastActiveGroupColRef.current = cols[0]; }
-                    setCollapsedGroupIds(next);
-                } else if (isAnyCollapsed) {
+                if (isAnyCollapsed) {
                     setCollapsedGroupIds(previous => {
                         const next = new Set(previous);
                         cols.forEach(id => next.delete(id));
@@ -4649,14 +4770,14 @@ export default function App() {
             }
 
             // Collapse All Only (S / س)
-            if (e.key === 's' || e.key === 'S' || e.key === 'س') {
+            if (isNavS(e)) {
                 e.preventDefault();
                 setCollapsedGroupIds(previous => new Set([...previous, ...cols]));
                 return;
             }
 
-            const isRight = e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'ي' || e.key === 'د';
-            const isLeft = e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.key === 'ش';
+            const isRight = e.key === 'ArrowRight' || isNavD(e);
+            const isLeft = e.key === 'ArrowLeft' || isNavA(e);
 
             if (isRight || isLeft) {
                 if (cols.length === 0) return;
@@ -4689,7 +4810,7 @@ export default function App() {
                         const next = new Set(prev);
                         next.delete(targetId); // Open target
 
-                        if (preferences.autoCollapse || isMindMap) {
+                        if (preferences.autoCollapse) {
                             cols.forEach(id => {
                                 if (id !== targetId) next.add(id);
                             });
@@ -4710,7 +4831,8 @@ export default function App() {
 
         window.addEventListener('keydown', handleWidgetNavigation);
         return () => window.removeEventListener('keydown', handleWidgetNavigation);
-    }, [activeTab, viewMode, widgetColumns, collapsedGroupIds, preferences.autoCollapse, inlineEditingId, isMindMap, reorderingGroups]);
+    }, [activeTab, viewMode, widgetColumns, collapsedGroupIds, preferences.autoCollapse, inlineEditingId, isMindMap, reorderingGroups,
+        isModalOpen, isSettingsOpen, groupCreation.isOpen, isQuickAdding, mapNoteId, expandedFolderIds]);
 
     return (
         <div
