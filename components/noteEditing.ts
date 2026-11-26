@@ -26,12 +26,64 @@ function lineContext(editor: HTMLElement, node: Node, offset: number) {
 const blueBulletHtml = '<span><span style="color: #6366f1">•</span>&nbsp;</span>';
 
 export function handleBlueBullet(editor: HTMLElement, event: KeyboardEvent): boolean {
-    if ((event.key !== ' ' && event.key !== 'Enter') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing) return false;
+    const deleting = event.key === 'Backspace' || event.key === 'Delete';
+    if ((!deleting && event.key !== ' ' && event.key !== 'Enter') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing) return false;
     const selection = window.getSelection();
     if (!selection?.isCollapsed || !selection.rangeCount || !selection.focusNode || !editor.contains(selection.focusNode)) return false;
     const range = selection.getRangeAt(0);
     const heading = (range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
         ?.closest<HTMLElement>('[data-note-heading]');
+    if (deleting) {
+        if (event.key === 'Delete' && !heading) {
+            const next = Array.from(editor.querySelectorAll<HTMLElement>('[data-note-heading]'))
+                .find(node => range.comparePoint(node, 0) > 0);
+            if (next) {
+                const gap = range.cloneRange();
+                gap.setEndBefore(next);
+                const fragment = gap.cloneContents();
+                if (fragment.textContent?.replace(/[\s\u200b\ufeff]/g, '') ||
+                    fragment.querySelector('img, hr, [contenteditable="false"]')) return false;
+                const { line, after } = lineContext(editor, range.startContainer, range.startOffset);
+                const blankBlock = !after && line !== editor && !line.contains(next) &&
+                    !line.textContent?.trim() && !line.querySelector('img, hr, div, p, ol, ul') &&
+                    line.querySelectorAll('br').length <= 1;
+                event.preventDefault();
+                if (blankBlock) {
+                    range.setStartBefore(line);
+                    range.collapse(true);
+                    line.remove();
+                } else {
+                    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+                    let removed = false;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        if (node === next) break;
+                        if (!gap.intersectsNode(node)) continue;
+                        if (node instanceof Text) {
+                            const start = node === range.startContainer ? range.startOffset : 0;
+                            if (start >= node.length) continue;
+                            node.deleteData(start, 1);
+                        } else if (node instanceof HTMLBRElement) node.remove();
+                        else continue;
+                        removed = true;
+                        break;
+                    }
+                    if (!removed) selection.collapse(next, 0);
+                }
+                editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentForward' }));
+                return true;
+            }
+        }
+        if (!heading || !editor.contains(heading) || heading.textContent?.replace(/[\s\u200b\ufeff]/g, '') ||
+            heading.querySelector('img, hr, div, p, ol, ul, [contenteditable="false"]')) return false;
+        event.preventDefault();
+        heading.removeAttribute('data-note-heading');
+        heading.removeAttribute('dir');
+        heading.replaceChildren(document.createElement('br'));
+        selection.collapse(heading, 0);
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: event.key === 'Backspace' ? 'deleteContentBackward' : 'deleteContentForward' }));
+        return true;
+    }
     if (event.key === 'Enter' && heading && editor.contains(heading)) {
         event.preventDefault();
         const remaining = document.createRange();
